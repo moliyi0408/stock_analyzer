@@ -6,6 +6,6 @@ from .structure import (
     get_starting_zone, get_selling_zone, get_support_resistance,
     get_candle_features, is_doji, is_long_upper_shadow,
     is_long_lower_shadow, detect_xianren, candle_bias_score,
-    detect_candlestick_patterns
+    detect_candlestick_patterns, get_multi_level_support_resistance
 )
 # 之後 volatility function 可以加進來

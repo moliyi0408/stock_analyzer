@@ -1,72 +1,46 @@
-import os
 import pandas as pd
 from data.loaders import prepare_full_stock_csv
-from indicators import (
-    calculate_ma, get_starting_zone, get_selling_zone
-)
+from indicators import calculate_ma
 from decision_engine import decision_engine
 from logs import save_analysis_log
 
-
 def main():
-    # ---------- 1️⃣ 設定股票代號與下載月份 ----------
     stock_id = "00635U"
-    df = prepare_full_stock_csv(stock_id, lookback_months=6)
 
-    if not isinstance(df, pd.DataFrame) or df.empty:
-        print("⚠ 無法取得任何資料，程式終止")
+    # 1️⃣ 下載資料
+    df = prepare_full_stock_csv(stock_id, lookback_months=6)
+    if df is None or df.empty:
+        print("⚠ 無法取得資料，程式終止")
         return
 
-    # ---------- 2️⃣ 計算技術指標 ----------
+    # 2️⃣ 計算均線 
     df = calculate_ma(df, handler=lambda df, ma: pd.concat([df, pd.DataFrame(ma)], axis=1))
 
-    # ---------- 3️⃣ 計算起漲區與賣出區 ----------
-    start_low = start_high = None
-    if isinstance(df, pd.DataFrame) and 'Close' in df.columns and 'Volume' in df.columns:
-        try:
-            start_low, start_high = get_starting_zone(df)
-        except Exception:
-            print("⚠ 起漲區計算失敗，使用 fallback")
-    
-    # fallback
-    if start_low is None or start_high is None:
-        if 'Close' in df.columns and not df['Close'].isna().all():
-            start_low = start_high = df['Close'].iloc[-1]
-        else:
-            start_low = start_high = None
-            print("⚠ 無法取得有效收盤價，起漲區設定為 None")
-
-    # 計算賣出區
+    # 3️⃣ 呼叫決策引擎
     try:
-        sell_low, sell_high = get_selling_zone(start_low, start_high)
-    except Exception:
-        sell_low = sell_high = None
-
-    # ---------- 4️⃣ 呼叫統合決策引擎 ----------
-    try:
-        result = decision_engine(
-            df=df,
-            start_zone=(start_low, start_high),
-            sell_zone=(sell_low, sell_high),
-            chip_strength=5
-        )
+        result = decision_engine(df=df, chip_strength=5)
     except Exception as e:
-        print(f"⚠ 統合決策引擎發生錯誤: {e}")
+        print(f"⚠ 決策引擎錯誤: {e}")
         result = {}
 
-    # ---------- 5️⃣ 印出結果 ----------
+    # 4️⃣ 印出結果
+    print_analysis(stock_id, df, result)
+
+    # 5️⃣ 儲存分析紀錄
+    save_analysis_log(stock_id=stock_id, df=df, result=result)
+
+
+def print_analysis(stock_id, df, result):
     print("========================================📊 股票分析結果")
     print(f"股票代號：{stock_id}")
+    close_price = df['Close'].iloc[-1] if 'Close' in df.columns else "N/A"
+    print(f"現價：{close_price}")
 
-    if 'Close' in df.columns and not df['Close'].isna().all():
-        print(f"現價：{df['Close'].iloc[-1]:.2f}")
-    else:
-        print("現價：N/A")
-
-    # 以下欄位防呆
     def safe_get(key, default="N/A"):
         return result.get(key, default) if result else default
 
+
+    # 其他決策結果
     print(f"趨勢：{safe_get('trend')}")
     print(f"價格位置：{safe_get('position')}")
     print(f"五日線狀態：{safe_get('ma5_status')}")
@@ -80,15 +54,21 @@ def main():
     print(f"停利參考價：{safe_get('take_profit')}")
     print(f"支撐價：{safe_get('support_level')}")
     print(f"壓力價：{safe_get('resistance_level')}")
-    
     patterns = safe_get('patterns', {})
     print(f"K 線結構：{patterns.get('overall_bias','N/A')} - {patterns.get('meaning','')}")
+        # 多空層級支撐/壓力
+    multi_zones = safe_get("multi_zones", {})
+    market_zone_status = safe_get("market_zone_status", "N/A")  # 直接取字串
+
+    for level, zones in multi_zones.items():
+        supports = zones.get("support", [])
+        resistances = zones.get("resistance", [])
+        print(f"{level} 支撐區：{supports}")
+        print(f"{level} 壓力區：{resistances}")
+        print(f"{level} 多空判斷：{market_zone_status}")  # 直接印字串
+        print("-" * 50)
     print("========================================")
-    save_analysis_log(
-    stock_id=stock_id,
-    df=df,
-    result=result
-)
+
 
 if __name__ == "__main__":
     main()

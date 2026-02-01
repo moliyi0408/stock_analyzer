@@ -60,15 +60,87 @@ def get_support_resistance(df, bin_size=5, top_n=3):
     resistance = sorted([b.right for b in top_bins if b.left >= mid_price])
 
     return support, resistance
+def get_support_resistance_zones(
+    df,
+    bin_size=5,
+    density_ratio=0.6,
+    fallback_include_all=True
+):
+    """
+    回傳支撐 / 壓力「區間」，防呆版
+    """
+    if df.empty or 'Close' not in df.columns:
+        return {"support": [], "resistance": []}
 
-"""
-Structure & Pattern Indicators
--------------------------------
-📌 功能：
-- 支撐/壓力區計算
-- K 線型態分析（十字線、長影線、仙人指路）
-- 偏多/偏空結構判斷
-"""
+    # 強制轉 float，過濾掉 NaN / 非數值
+    close = pd.to_numeric(df['Close'], errors='coerce').dropna()
+    if close.empty:
+        return {"support": [], "resistance": []}
+
+    min_p, max_p = close.min(), close.max()
+
+    # 建立價格分箱
+    bins = list(range(
+        int(min_p // bin_size) * bin_size,
+        int(max_p // bin_size + 2) * bin_size,
+        bin_size
+    ))
+
+    hist = pd.cut(close, bins=bins).value_counts()
+
+    max_count = hist.max()
+    dense_bins = hist[hist >= max_count * density_ratio]
+
+    mid_price = close.mean()
+
+    support, resistance = [], []
+
+    for b in hist.index:
+        zone = (round(b.left, 2), round(b.right, 2))
+        if b in dense_bins.index:
+            if b.right <= mid_price:
+                support.append(zone)
+            elif b.left >= mid_price:
+                resistance.append(zone)
+        else:
+            if fallback_include_all:
+                if b.right <= mid_price:
+                    support.append(zone)
+                elif b.left >= mid_price:
+                    resistance.append(zone)
+
+    return {
+        "support": sorted(support),
+        "resistance": sorted(resistance)
+    }
+
+def get_multi_level_support_resistance(df):
+    """
+    多層級（多批資金）支撐 / 壓力
+    """
+    levels = {
+        "short_term": 60,   # 短線資金 最近 60 根
+        "swing": 120,       # 波段資金 最近 120 根
+        "long_term": 250    # 長線資金 最近 250 根
+    }
+
+    result = {}
+
+    for level, lookback in levels.items():
+        sub_df = df.iloc[-lookback:] if len(df) >= lookback else df
+
+        # bin_size 用波動自適應
+        bin_size = max(1, int(sub_df['Close'].std()))
+
+        zones = get_support_resistance_zones(
+            sub_df,
+            bin_size=bin_size
+        )
+
+        result[level] = zones
+
+    return result
+
 
 # ----------------- K線型態分析工具 -----------------
 def get_candle_features(row):

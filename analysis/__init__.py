@@ -7,3 +7,5 @@ from .market_state import detect_trend
 
 # 市場溫度
 from .overheat import calculate_overheat, market_temperature
+
+from .market_zone import classify_market_zone
