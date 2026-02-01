@@ -1,5 +1,5 @@
 # analysis/behavior.py
-from ._behavior_core import rebound_strength, selling_pressure, support_reclaim
+from indicators import rebound_strength, selling_pressure, support_reclaim
 
 def judge_market_state(df, support, overheat, patterns, zones=None):
     """
