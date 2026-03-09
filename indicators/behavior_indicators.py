@@ -24,6 +24,10 @@ def selling_pressure(df):
 def support_reclaim(df, support):
     if len(df) < 2:
         return False
+    if support is None or pd.isna(support):
+        return False
     close = df['Close'].iloc[-1]
     prev_close = df['Close'].iloc[-2]
+    if pd.isna(close) or pd.isna(prev_close):
+        return False
     return prev_close < support <= close

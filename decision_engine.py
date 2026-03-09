@@ -8,6 +8,16 @@ from indicators import (
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
 
 
+def _to_float_or_none(value):
+    """Normalize a scalar to float, invalid values become None."""
+    if value is None:
+        return None
+    v = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
+    if pd.isna(v):
+        return None
+    return float(v)
+
+
 # ---------------- 防呆 / 輔助函數 ----------------
 def safe_dataframe(df: pd.DataFrame):
     if df is None or df.empty:
@@ -39,8 +49,13 @@ def safe_sell_zone(start_low, start_high, sell_zone=(None, None)):
             sell_low, sell_high = None, None
     return sell_low, sell_high
 
-
 def determine_trend(close, ma20, ma60):
+    close = _to_float_or_none(close)
+    ma20 = _to_float_or_none(ma20)
+    ma60 = _to_float_or_none(ma60)
+
+    if close is None or ma20 is None or ma60 is None:
+        return "趨勢資料不足"
     if close > ma20 and ma20 > ma60:
         return "多頭趨勢"
     elif close < ma20 and ma20 < ma60:
@@ -59,8 +74,13 @@ def determine_position(close, start_low, start_high, sell_low, sell_high):
     else:
         return "未知"
 
-
 def determine_ma5_status(df, ma5, close):
+    ma5 = _to_float_or_none(ma5)
+    close = _to_float_or_none(close)
+
+    if ma5 is None or close is None:
+        return "均線資料不足"
+
     if 'MA5' in df.columns:
         last_5 = df.tail(5)
         ma5_up_days = (last_5['Close'] > last_5['MA5']).sum()
@@ -75,6 +95,10 @@ def determine_ma5_status(df, ma5, close):
 
 
 def determine_market_temp(heat_score):
+    heat_score = _to_float_or_none(heat_score)
+    if heat_score is None:
+        return "未知"
+
     if heat_score < 20:
         return "冷靜（可布局）"
     elif heat_score < 50:
@@ -102,24 +126,28 @@ def determine_add_targets(start_low, chip_strength):
 
 
 def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level):
+    ma5 = _to_float_or_none(ma5)
     stop_loss_price = min(df['Close'].iloc[-2:].min(), support_level if support_level else df['Close'].iloc[-1]*0.9)
     take_profit_price = sell_high if sell_high else df['Close'].iloc[-1]*1.2
     add_targets = determine_add_targets(start_low, chip_strength)
     reduce_target = ma5
+    
 
     # 持有者策略
     if trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
-        hold_advice = f"續抱，跌破 5 日線減碼至 {reduce_target:.2f}"
+        hold_advice = f"續抱，跌破 5 日線減碼至 {reduce_target:.2f}" if reduce_target is not None else "續抱，但均線資料不足請保守"
     elif ma5_status.startswith("跌破"):
         hold_advice = f"反彈減碼，控管風險，停損點 {stop_loss_price:.2f}"
     else:
         hold_advice = "保守觀察"
 
+
     # 空手者策略
+   # 空手者策略
     if position == "起漲區（低風險）":
         entry_advice = f"可分批布局，目標加碼價 {add_targets}"
     elif position == "延伸段（趨勢續航）":
-        entry_advice = f"等待拉回 5 日線 ({ma5:.2f})"
+        entry_advice = f"等待拉回 5 日線 ({ma5:.2f})" if ma5 is not None else "等待均線資料完整後再評估"
     else:
         entry_advice = "不追高，等待修正"
 
@@ -129,12 +157,14 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
 # ---------------- 決策引擎主函數 ----------------
 def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_risk=0, chip_strength=0):
     df = safe_dataframe(df)
-    close = df['Close'].iloc[-1]
+    close = _to_float_or_none(df['Close'].iloc[-1])
+    if close is None:
+        raise ValueError("最新 Close 值無效，無法分析")
 
     # 直接從 df 取均線
-    ma5 = df['MA5'].iloc[-1] if 'MA5' in df.columns else close
-    ma20 = df['MA20'].iloc[-1] if 'MA20' in df.columns else close
-    ma60 = df['MA60'].iloc[-1] if 'MA60' in df.columns else close
+    ma5 = _to_float_or_none(df['MA5'].iloc[-1]) if 'MA5' in df.columns else close
+    ma20 = _to_float_or_none(df['MA20'].iloc[-1]) if 'MA20' in df.columns else close
+    ma60 = _to_float_or_none(df['MA60'].iloc[-1]) if 'MA60' in df.columns else close
 
     # 趨勢判斷
     trend = determine_trend(close, ma20, ma60)
@@ -160,8 +190,13 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
     market_zone_status = classify_market_zone(close, multi_zones)
 
     # 行為層分析
-    behavior, behavior_reasons = judge_market_state(df, support_level, {'total': heat_score, 'zones': multi_zones}, patterns)
-
+    behavior, behavior_reasons = judge_market_state(
+            df,
+            support_level,
+            {'total': heat_score, 'zones': multi_zones},
+            patterns,
+            zones=multi_zones
+        )
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
         df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level
@@ -178,7 +213,7 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "hold_advice": hold_advice,
         "reduce_target": reduce_target,
         "entry_advice": entry_advice,
-        "add_targets": add_targets,
+
         "stop_loss": stop_loss_price,
         "take_profit": take_profit_price,
         "patterns": patterns,
