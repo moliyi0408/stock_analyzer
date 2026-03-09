@@ -44,7 +44,10 @@ def print_analysis(stock_id, df, result):
     print(f"現價：{close_price}")
 
     def safe_get(key, default="N/A"):
-        return result.get(key, default) if result else default
+        if not result:
+            return default
+        value = result.get(key, default)
+        return default if value is None else value
 
 
     # 其他決策結果

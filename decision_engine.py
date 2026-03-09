@@ -3,7 +3,9 @@ from indicators import (
     calculate_ma,
     detect_candlestick_patterns,
     get_support_resistance,
-    get_multi_level_support_resistance
+    get_multi_level_support_resistance,
+    get_starting_zone,
+    get_selling_zone
 )
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
 
@@ -32,22 +34,15 @@ def safe_dataframe(df: pd.DataFrame):
 def safe_start_zone(df: pd.DataFrame, start_zone=(None, None)):
     start_low, start_high = start_zone
     if start_low is None or start_high is None:
-        if 'Close' in df.columns and not df['Close'].isna().all():
-            start_low = start_high = df['Close'].iloc[-1]
-        else:
-            start_low = start_high = None
-    return start_low, start_high
+        start_low, start_high = get_starting_zone(df)
+    return _to_float_or_none(start_low), _to_float_or_none(start_high)
 
 
 def safe_sell_zone(start_low, start_high, sell_zone=(None, None)):
     sell_low, sell_high = sell_zone
     if sell_low is None or sell_high is None:
-        if start_low is not None and start_high is not None:
-            # 預設賣出區與起漲區相同
-            sell_low, sell_high = start_low, start_high
-        else:
-            sell_low, sell_high = None, None
-    return sell_low, sell_high
+         sell_low, sell_high = get_selling_zone(start_low, start_high)
+    return _to_float_or_none(sell_low), _to_float_or_none(sell_high)
 
 def determine_trend(close, ma20, ma60):
     close = _to_float_or_none(close)
@@ -113,6 +108,29 @@ def get_latest_support_resistance(df):
     support_list, resistance_list = get_support_resistance(df)
     support_level = support_list[-1] if support_list else None
     resistance_level = resistance_list[-1] if resistance_list else None
+    return _to_float_or_none(support_level), _to_float_or_none(resistance_level)
+
+def infer_support_resistance_from_zones(multi_zones, close):
+    close = _to_float_or_none(close)
+    if close is None or not isinstance(multi_zones, dict):
+        return None, None
+
+    supports = []
+    resistances = []
+    for zones in multi_zones.values():
+        for low, high in zones.get("support", []):
+            low = _to_float_or_none(low)
+            high = _to_float_or_none(high)
+            if low is not None and high is not None:
+                supports.append((low, high))
+        for low, high in zones.get("resistance", []):
+            low = _to_float_or_none(low)
+            high = _to_float_or_none(high)
+            if low is not None and high is not None:
+                resistances.append((low, high))
+
+    support_level = max((high for _, high in supports if high <= close), default=None)
+    resistance_level = min((low for low, _ in resistances if low >= close), default=None)
     return support_level, resistance_level
 
 
@@ -125,13 +143,12 @@ def determine_add_targets(start_low, chip_strength):
     return add_targets
 
 
-def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level):
+def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level):
     ma5 = _to_float_or_none(ma5)
     stop_loss_price = min(df['Close'].iloc[-2:].min(), support_level if support_level else df['Close'].iloc[-1]*0.9)
-    take_profit_price = sell_high if sell_high else df['Close'].iloc[-1]*1.2
+    take_profit_price = sell_high if sell_high is not None else (resistance_level if resistance_level is not None else df['Close'].iloc[-1]*1.2)
     add_targets = determine_add_targets(start_low, chip_strength)
     reduce_target = ma5
-    
 
     # 持有者策略
     if trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
@@ -141,9 +158,7 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
     else:
         hold_advice = "保守觀察"
 
-
     # 空手者策略
-   # 空手者策略
     if position == "起漲區（低風險）":
         entry_advice = f"可分批布局，目標加碼價 {add_targets}"
     elif position == "延伸段（趨勢續航）":
@@ -199,8 +214,8 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         )
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
-        df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level
-    )
+            df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level
+        )
 
     return {
         "trend": trend,

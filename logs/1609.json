@@ -1,0 +1,177 @@
+{
+  "2026-03-10": {
+    "close_price": 35.65,
+    "decision": {
+      "trend": "空頭趨勢",
+      "position": "起漲區（低風險）",
+      "ma5_status": "跌破（短線轉弱）",
+      "market_temp": "正常",
+      "heat_score": 40.827007137872926,
+      "behavior": "震盪整理，觀察為主",
+      "behavior_reasons": [
+        "下跌量縮，非倒貨",
+        "價格位於short_term支撐 / swing支撐 / long_term支撐區"
+      ],
+      "hold_advice": "反彈減碼，控管風險，停損點 32.09",
+      "reduce_target": 37.89,
+      "entry_advice": "可分批布局，目標加碼價 [34.5, 32.67]",
+      "stop_loss": 32.085,
+      "take_profit": 51.35,
+      "patterns": {
+        "lookback_days": 5,
+        "bias_score": -1.0,
+        "overall_bias": "neutral",
+        "meaning": "K 線結構偏中性，等待方向",
+        "details": {
+          "doji_days": 1,
+          "long_upper_days": 1,
+          "long_lower_days": 1,
+          "xianren": false
+        }
+      },
+      "support_level": null,
+      "resistance_level": 50.0,
+      "multi_zones": {
+        "short_term": {
+          "support": [
+            [
+              34,
+              36
+            ],
+            [
+              36,
+              38
+            ]
+          ],
+          "resistance": [
+            [
+              40,
+              42
+            ],
+            [
+              42,
+              44
+            ],
+            [
+              44,
+              46
+            ],
+            [
+              46,
+              48
+            ]
+          ]
+        },
+        "swing": {
+          "support": [
+            [
+              35,
+              36
+            ],
+            [
+              36,
+              37
+            ],
+            [
+              37,
+              38
+            ],
+            [
+              38,
+              39
+            ]
+          ],
+          "resistance": [
+            [
+              40,
+              41
+            ],
+            [
+              41,
+              42
+            ],
+            [
+              42,
+              43
+            ],
+            [
+              43,
+              44
+            ],
+            [
+              44,
+              45
+            ],
+            [
+              45,
+              46
+            ],
+            [
+              46,
+              47
+            ],
+            [
+              47,
+              48
+            ]
+          ]
+        },
+        "long_term": {
+          "support": [
+            [
+              35,
+              36
+            ],
+            [
+              36,
+              37
+            ],
+            [
+              37,
+              38
+            ],
+            [
+              38,
+              39
+            ]
+          ],
+          "resistance": [
+            [
+              40,
+              41
+            ],
+            [
+              41,
+              42
+            ],
+            [
+              42,
+              43
+            ],
+            [
+              43,
+              44
+            ],
+            [
+              44,
+              45
+            ],
+            [
+              45,
+              46
+            ],
+            [
+              46,
+              47
+            ],
+            [
+              47,
+              48
+            ]
+          ]
+        }
+      },
+      "market_zone_status": "多頭大本營"
+    }
+  }
+}
