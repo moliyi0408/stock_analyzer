@@ -265,7 +265,20 @@ def build_factor_scorecard(df, chip_df=None):
 
 def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level, final_score=60):
     ma5 = _to_float_or_none(ma5)
-    stop_loss_price = min(df['Close'].iloc[-2:].min(), support_level if support_level else df['Close'].iloc[-1]*0.9)
+    close = _to_float_or_none(df['Close'].iloc[-1])
+    recent_low = _to_float_or_none(df['Low'].iloc[-5:].min()) if 'Low' in df.columns and len(df) >= 5 else close
+
+    # 停損以「關鍵支撐下方緩衝」為主，避免總是貼著現價導致訊號失真
+    if support_level is not None:
+        stop_loss_price = support_level * 0.97
+    elif recent_low is not None:
+        stop_loss_price = recent_low * 0.99
+    elif close is not None:
+        stop_loss_price = close * 0.9
+    else:
+        stop_loss_price = None
+
+    stop_loss_price = round(stop_loss_price, 2) if stop_loss_price is not None else None
     take_profit_price = sell_high if sell_high is not None else (resistance_level if resistance_level is not None else df['Close'].iloc[-1]*1.2)
     add_targets = determine_add_targets(start_low, chip_strength)
     reduce_target = ma5
@@ -274,7 +287,10 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
     if final_score >= 75 and trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
         hold_advice = f"續抱，跌破 5 日線減碼至 {reduce_target:.2f}" if reduce_target is not None else "續抱，但均線資料不足請保守"
     elif final_score < 60 or ma5_status.startswith("跌破"):
-        hold_advice = f"反彈減碼，控管風險，停損點 {stop_loss_price:.2f}"
+        if stop_loss_price is not None:
+            hold_advice = f"反彈減碼，控管風險，停損點 {stop_loss_price:.2f}"
+        else:
+            hold_advice = "反彈減碼，控管風險"
     else:
         hold_advice = "保守觀察"
 
@@ -283,6 +299,8 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
         entry_advice = f"可分批布局，目標加碼價 {add_targets}"
     elif final_score >= 60 and position == "延伸段（趨勢續航）":
         entry_advice = f"等待拉回 5 日線 ({ma5:.2f})" if ma5 is not None else "等待均線資料完整後再評估"
+    elif support_level is not None and close is not None and close < support_level:
+        entry_advice = "支撐失守，暫不承接，等待重新站回支撐或新底型形成"
     else:
         entry_advice = "不追高，等待修正"
 
@@ -387,8 +405,15 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
 
     # K線結構 & 支撐壓力
     patterns = detect_candlestick_patterns(df)
-    support_level, resistance_level = get_latest_support_resistance(df)
     multi_zones = get_multi_level_support_resistance(df)
+    support_level, resistance_level = get_latest_support_resistance(df)
+    inferred_support, inferred_resistance = infer_support_resistance_from_zones(multi_zones, close)
+
+    # 若主支撐明顯高於現價，代表可能已跌破；改用區間推導出的近端支撐避免誤導
+    if support_level is None or (support_level is not None and support_level > close):
+        support_level = inferred_support if inferred_support is not None else support_level
+    if resistance_level is None:
+        resistance_level = inferred_resistance
     market_zone_status = classify_market_zone(close, multi_zones)
 
     # 行為層分析

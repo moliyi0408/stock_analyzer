@@ -37,6 +37,10 @@ def judge_market_state(df, support, overheat, patterns, zones=None, volume_state
         score += 1
         reasons.append("跌破支撐後站回")
 
+    if support is not None and close < support:
+        score -= 1
+        reasons.append("收盤跌破關鍵支撐，轉弱訊號")
+
     # ---------- 結構層（K 線） ----------
     if patterns and patterns.get('overall_bias') == 'bullish':
         score += 1
