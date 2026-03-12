@@ -1,6 +1,13 @@
 # analysis/behavior.py
 from indicators import rebound_strength, selling_pressure, support_reclaim
 
+
+LEVEL_LABELS = {
+    "short_term": "短線",
+    "swing": "波段",
+    "long_term": "長線",
+}
+
 def judge_market_state(df, support, overheat, patterns, zones=None, volume_state=None, price_volume_signal=None):
     """
     綜合判斷：洗盤 / 中性 / 出貨
@@ -43,12 +50,13 @@ def judge_market_state(df, support, overheat, patterns, zones=None, volume_state
 
     if zones:
         for level, data in zones.items():
+            level_name = LEVEL_LABELS.get(level, str(level))
             for z in data.get("support", []):
                 if in_zone(close, z):
-                    zone_context.append(f"{level}支撐")
+                    zone_context.append(f"{level_name}支撐")
             for z in data.get("resistance", []):
                 if in_zone(close, z):
-                    zone_context.append(f"{level}壓力")
+                    zone_context.append(f"{level_name}壓力")
 
     if zone_context:
         reasons.append(f"價格位於{' / '.join(zone_context)}區")
