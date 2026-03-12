@@ -72,7 +72,11 @@ class BacktestEngine:
                 elif result.get('final_score', 0) < 55:
                     self._sell(close, date, "signal_exit")
             else:
-                if result.get('final_score', 0) >= 70 and result.get('trend') == '多頭趨勢':
+                if (
+                    result.get('final_score', 0) >= 70
+                    and result.get('trend') == '多頭趨勢'
+                    and (result.get('rr_metrics') or {}).get('rr_pass', False)
+                ):
                     self._buy(close, result.get('stop_loss'), date)
 
             equity = self.cash + self.position_shares * close
@@ -105,13 +109,22 @@ class BacktestEngine:
             "win_rate": round(win_rate, 2),
             "avg_return": round(avg_return, 2),
             "max_drawdown": round(max_drawdown, 2),
+            "trade_logs": self.trade_logs,
         }
 
+    def export_trade_logs(self, output_path):
+        if not self.trade_logs:
+            return
+        pd.DataFrame(self.trade_logs).to_csv(output_path, index=False, encoding='utf-8')
 
-def run_stock_backtest(stock_id, years=5, initial_capital=1_000_000):
+
+def run_stock_backtest(stock_id, years=5, initial_capital=1_000_000, export_path=None):
     df = prepare_full_feature_df(stock_id, lookback_months=years * 12, include_chip=True)
     if df is None or df.empty:
         raise ValueError("回測資料不足")
 
     engine = BacktestEngine(df=df, initial_capital=initial_capital)
-    return engine.run()
+    result = engine.run()
+    if export_path:
+        engine.export_trade_logs(export_path)
+    return result

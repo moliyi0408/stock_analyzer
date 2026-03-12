@@ -7,4 +7,4 @@ from .structure import get_starting_zone, get_selling_zone, get_support_resistan
 from .trend import calculate_ma
 from .volume_structure import calc_volume_baseline, detect_volume_state, detect_price_volume_pattern
 
-from .volatility import calc_bollinger_bands
+from .volatility import calc_bollinger_bands, calc_atr
