@@ -5,6 +5,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import requests
 
+from data.chip_loaders import load_chip_csv
+
 # ----------------- 1️⃣ 民國年轉西元 -----------------
 def convert_tw_date(tw_date):
     try:
@@ -126,6 +128,29 @@ def get_last_n_months(n, end_date=None):
     return months
 
 # ----------------- 7️⃣ 自動準備完整 CSV -----------------
+
+
+def prepare_full_feature_df(stock_id, lookback_months=6, include_chip=True):
+    """
+    準備價量 + 籌碼合併資料：
+    1) 價量資料由 prepare_full_stock_csv 取得
+    2) 依 Date 左連接籌碼欄位
+    """
+    price_df = prepare_full_stock_csv(stock_id, lookback_months=lookback_months)
+    if price_df is None or price_df.empty:
+        return pd.DataFrame()
+
+    feature_df = price_df.copy()
+    feature_df['Date'] = pd.to_datetime(feature_df['Date'], errors='coerce')
+    feature_df = feature_df.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
+
+    if include_chip:
+        chip_df = load_chip_csv(stock_id)
+        if not chip_df.empty:
+            feature_df = feature_df.merge(chip_df, on='Date', how='left')
+
+    return feature_df
+
 def prepare_full_stock_csv(stock_id, lookback_months=6):
     """
     自動準備完整 CSV：

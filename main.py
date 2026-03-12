@@ -1,5 +1,5 @@
 import pandas as pd
-from data.loaders import prepare_full_stock_csv
+from data.loaders import prepare_full_feature_df
 from indicators import calculate_ma
 from decision_engine import decision_engine
 from logs import save_analysis_log
@@ -8,7 +8,7 @@ def main():
     stock_id = "1504"
 
     # 1️⃣ 下載資料
-    df = prepare_full_stock_csv(stock_id, lookback_months=6)
+    df = prepare_full_feature_df(stock_id, lookback_months=6, include_chip=True)
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")
         return
@@ -61,6 +61,8 @@ def print_analysis(stock_id, df, result):
     print(f"量價訊號：{safe_get('price_volume_signal')}")
     print(f"20 日均量：{safe_get('avg_volume_20')}")
     print(f"量比（當日量/20 日均量）：{safe_get('volume_ratio')}")
+    print(f"籌碼分數：{safe_get('chip_score', 0)}")
+    print(f"籌碼訊號：{safe_get('chip_signals', {})}")
     print(f"持有者策略：{safe_get('hold_advice')}")
     print(f"空手者策略：{safe_get('entry_advice')}")
     print(f"停損參考價：{safe_get('stop_loss')}")
