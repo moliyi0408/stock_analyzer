@@ -93,9 +93,43 @@ def print_analysis(stock_id, df, result):
     print(f"空手者策略：{safe_get('entry_advice')}")
     buy_reco = safe_get('buy_recommendation', {})
     if isinstance(buy_reco, dict) and buy_reco:
+        def _format_buy_zone_and_tiers(zone, tiers):
+            zone_display = zone
+            tiers_display = tiers
+
+            if isinstance(tiers, list):
+                dedup_tiers = []
+                seen_prices = set()
+                for tier in tiers:
+                    if not isinstance(tier, dict):
+                        continue
+                    price = tier.get('price')
+                    if price in seen_prices:
+                        continue
+                    seen_prices.add(price)
+                    dedup_tiers.append({'batch': len(dedup_tiers) + 1, 'price': price})
+
+                if dedup_tiers:
+                    tiers_display = "、".join(
+                        f"第{tier.get('batch')}批 {tier.get('price')}" for tier in dedup_tiers
+                    )
+
+                    if isinstance(zone, list) and len(zone) == 2:
+                        zone_low, zone_high = sorted(zone)
+                        tier_prices = sorted(tier.get('price') for tier in dedup_tiers)
+                        if tier_prices and tier_prices[0] == zone_low and tier_prices[-1] == zone_high:
+                            zone_display = f"{zone_low} ~ {zone_high}（已由分批買點覆蓋）"
+
+            return zone_display, tiers_display
+
+        zone_display, tiers_display = _format_buy_zone_and_tiers(
+            buy_reco.get('preferred_buy_zone', 'N/A'),
+            buy_reco.get('tiers', 'N/A'),
+        )
+
         print(f"買入策略：{buy_reco.get('strategy', 'N/A')}")
-        print(f"建議買入區間：{buy_reco.get('preferred_buy_zone', 'N/A')}")
-        print(f"分批買點：{buy_reco.get('tiers', 'N/A')}")
+        print(f"建議買入區間：{zone_display}")
+        print(f"分批買點：{tiers_display}")
         print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
     print(f"停損參考價：{safe_get('stop_loss')}")
     print(f"停利參考價：{safe_get('take_profit')}")
