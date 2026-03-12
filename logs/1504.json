@@ -1,0 +1,128 @@
+{
+  "2026-03-12": {
+    "close_price": 70.9,
+    "chip_score": 0,
+    "chip_signals": {
+      "foreign_buy_streak": 0,
+      "foreign_buy_streak_signal": false,
+      "price_up_margin_down": false,
+      "holder_accumulation": false
+    },
+    "decision": {
+      "trend": "空頭趨勢",
+      "position": "起漲區（低風險）",
+      "ma5_status": "試探（需觀察）",
+      "market_temp": "正常",
+      "heat_score": 33.589137968278536,
+      "behavior": "震盪整理，觀察為主",
+      "behavior_reasons": [
+        "下跌量縮，非倒貨",
+        "量價結構：下跌量縮，籌碼相對穩定",
+        "價格位於short_term支撐 / swing支撐 / long_term支撐區"
+      ],
+      "hold_advice": "保守觀察",
+      "reduce_target": 70.72,
+      "entry_advice": "可分批布局，目標加碼價 [75.97, 71.97]",
+      "stop_loss": 70.9,
+      "take_profit": 114.01,
+      "patterns": {
+        "lookback_days": 5,
+        "bias_score": 1,
+        "overall_bias": "neutral",
+        "meaning": "K 線結構偏中性，等待方向",
+        "details": {
+          "doji_days": 0,
+          "long_upper_days": 0,
+          "long_lower_days": 0,
+          "xianren": false
+        }
+      },
+      "support_level": 85.0,
+      "resistance_level": 115.0,
+      "multi_zones": {
+        "short_term": {
+          "support": [
+            [
+              65,
+              70
+            ],
+            [
+              70,
+              75
+            ],
+            [
+              75,
+              80
+            ]
+          ],
+          "resistance": [
+            [
+              85,
+              90
+            ],
+            [
+              90,
+              95
+            ]
+          ]
+        },
+        "swing": {
+          "support": [
+            [
+              65,
+              78
+            ],
+            [
+              78,
+              91
+            ]
+          ],
+          "resistance": [
+            [
+              104,
+              117
+            ],
+            [
+              117,
+              130
+            ]
+          ]
+        },
+        "long_term": {
+          "support": [
+            [
+              65,
+              78
+            ],
+            [
+              78,
+              91
+            ]
+          ],
+          "resistance": [
+            [
+              104,
+              117
+            ],
+            [
+              117,
+              130
+            ]
+          ]
+        }
+      },
+      "market_zone_status": "多頭大本營",
+      "volume_state": "量縮",
+      "price_volume_signal": "下跌量縮",
+      "avg_volume_20": 12491364.5,
+      "volume_ratio": 0.5514582494170273,
+      "chip_signals": {
+        "foreign_buy_streak": 0,
+        "foreign_buy_streak_signal": false,
+        "price_up_margin_down": false,
+        "holder_accumulation": false
+      },
+      "chip_score": 0
+    }
+  }
+}
