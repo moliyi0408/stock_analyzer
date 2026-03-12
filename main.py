@@ -91,6 +91,12 @@ def print_analysis(stock_id, df, result):
     print(f"籌碼訊號：{translate_text(safe_get('chip_signals', {}))}")
     print(f"持有者策略：{safe_get('hold_advice')}")
     print(f"空手者策略：{safe_get('entry_advice')}")
+    buy_reco = safe_get('buy_recommendation', {})
+    if isinstance(buy_reco, dict) and buy_reco:
+        print(f"買入策略：{buy_reco.get('strategy', 'N/A')}")
+        print(f"建議買入區間：{buy_reco.get('preferred_buy_zone', 'N/A')}")
+        print(f"分批買點：{buy_reco.get('tiers', 'N/A')}")
+        print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
     print(f"停損參考價：{safe_get('stop_loss')}")
     print(f"停利參考價：{safe_get('take_profit')}")
     print(f"支撐價：{safe_get('support_level')}")
