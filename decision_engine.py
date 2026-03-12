@@ -172,6 +172,65 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
     return stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice
 
 
+
+
+def _calc_buy_streak(series: pd.Series) -> int:
+    streak = 0
+    for value in reversed(series.tolist()):
+        v = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
+        if pd.isna(v) or v <= 0:
+            break
+        streak += 1
+    return streak
+
+
+def calculate_chip_signals(df: pd.DataFrame):
+    """計算籌碼因子訊號與分數。"""
+    signals = {
+        "foreign_buy_streak": 0,
+        "foreign_buy_streak_signal": False,
+        "price_up_margin_down": False,
+        "holder_accumulation": False,
+    }
+    score = 0
+
+    if 'foreign_net_buy' in df.columns:
+        streak = _calc_buy_streak(df['foreign_net_buy'].dropna())
+        signals["foreign_buy_streak"] = int(streak)
+        if streak >= 5:
+            score += 2
+            signals["foreign_buy_streak_signal"] = True
+        elif streak >= 3:
+            score += 1
+            signals["foreign_buy_streak_signal"] = True
+
+    if len(df) >= 2:
+        price_change = _to_float_or_none(df['Close'].iloc[-1])
+        prev_price = _to_float_or_none(df['Close'].iloc[-2])
+        margin_change = None
+        if 'margin_change_1d' in df.columns:
+            margin_change = _to_float_or_none(df['margin_change_1d'].iloc[-1])
+        elif 'margin_balance' in df.columns:
+            margin_change = _to_float_or_none(df['margin_balance'].iloc[-1] - df['margin_balance'].iloc[-2])
+
+        if price_change is not None and prev_price is not None and margin_change is not None:
+            if price_change > prev_price and margin_change < 0:
+                signals["price_up_margin_down"] = True
+                score += 1
+
+    if len(df) >= 2 and 'holder_1000_up_ratio' in df.columns and 'holder_retail_ratio' in df.columns:
+        large_now = _to_float_or_none(df['holder_1000_up_ratio'].iloc[-1])
+        large_prev = _to_float_or_none(df['holder_1000_up_ratio'].iloc[-2])
+        retail_now = _to_float_or_none(df['holder_retail_ratio'].iloc[-1])
+        retail_prev = _to_float_or_none(df['holder_retail_ratio'].iloc[-2])
+
+        if None not in (large_now, large_prev, retail_now, retail_prev):
+            if large_now > large_prev and retail_now < retail_prev:
+                signals["holder_accumulation"] = True
+                score += 1
+
+    return signals, score
+
 # ---------------- 決策引擎主函數 ----------------
 def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_risk=0, chip_strength=0):
     df = safe_dataframe(df)
@@ -225,9 +284,11 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
             volume_state=volume_state,
             price_volume_signal=price_volume_signal
         )
+    chip_signals, chip_score = calculate_chip_signals(df)
+
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
-            df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level
+            df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength + chip_score, support_level, resistance_level
         )
 
     return {
@@ -252,5 +313,7 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "volume_state": volume_state,
         "price_volume_signal": price_volume_signal,
         "avg_volume_20": latest_avg_volume,
-        "volume_ratio": volume_ratio
+        "volume_ratio": volume_ratio,
+        "chip_signals": chip_signals,
+        "chip_score": chip_score
     }
