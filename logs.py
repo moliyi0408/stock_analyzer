@@ -63,6 +63,8 @@ def save_analysis_log(stock_id, df, result, base_dir="logs"):
 
     log_data[today] = {
         "close_price": float(df['Close'].iloc[-1]) if 'Close' in df.columns else None,
+        "chip_score": safe_result.get("chip_score") if isinstance(safe_result, dict) else None,
+        "chip_signals": safe_result.get("chip_signals") if isinstance(safe_result, dict) else None,
         "decision": safe_result
     }
 
