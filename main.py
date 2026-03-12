@@ -5,7 +5,7 @@ from decision_engine import decision_engine
 from logs import save_analysis_log
 
 def main():
-    stock_id = "1609"
+    stock_id = "1504"
 
     # 1️⃣ 下載資料
     df = prepare_full_stock_csv(stock_id, lookback_months=6)
