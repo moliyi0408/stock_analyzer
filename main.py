@@ -68,6 +68,7 @@ def print_analysis(stock_id, df, result):
     print(f"股票代號：{stock_id}")
     close_price = df['Close'].iloc[-1] if 'Close' in df.columns else "N/A"
     print(f"現價：{close_price}")
+    printed_metric_values = {}
 
     def safe_get(key, default="N/A"):
         if not result:
@@ -75,10 +76,14 @@ def print_analysis(stock_id, df, result):
         value = result.get(key, default)
         return default if value is None else value
 
-    def with_explanation(label, value, explanation):
+    def with_explanation(label, value, explanation, explanation_prefix="白話"):
+        # 同一指標若值相同，只印一次，避免重複輸出
+        if printed_metric_values.get(label) == value:
+            return
+        printed_metric_values[label] = value
         print(f"{label}：{value}")
         if explanation:
-            print(f"  ↳ 白話：{explanation}")
+            print(f"  ↳ {explanation_prefix}：{explanation}")
 
     def explain_confidence(score):
         if not isinstance(score, (int, float)):
