@@ -8,9 +8,13 @@ from indicators import (
     get_selling_zone,
     calc_volume_baseline,
     detect_volume_state,
-    detect_price_volume_pattern
+    detect_price_volume_pattern,
+    calc_rsi,
+    calc_macd,
+    calc_bollinger_bands,
 )
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
+from strategy.position import calc_position_size
 
 
 def _to_float_or_none(value):
@@ -21,6 +25,72 @@ def _to_float_or_none(value):
     if pd.isna(v):
         return None
     return float(v)
+
+
+def build_weekly_trend(df: pd.DataFrame):
+    if df is None or df.empty or 'Date' not in df.columns:
+        return "資料不足"
+
+    weekly = df.copy()
+    weekly['Date'] = pd.to_datetime(weekly['Date'], errors='coerce')
+    weekly = weekly.dropna(subset=['Date']).sort_values('Date').set_index('Date')
+    if weekly.empty:
+        return "資料不足"
+
+    week_df = weekly.resample('W-FRI').agg({
+        'Open': 'first',
+        'High': 'max',
+        'Low': 'min',
+        'Close': 'last',
+        'Volume': 'sum',
+    }).dropna(subset=['Close'])
+    if len(week_df) < 20:
+        return "資料不足"
+
+    ma20 = week_df['Close'].rolling(20).mean().iloc[-1]
+    close = week_df['Close'].iloc[-1]
+    if close > ma20:
+        return "週K多頭"
+    return "週K空頭"
+
+
+def build_indicator_resonance(df: pd.DataFrame, support_level):
+    close = _to_float_or_none(df['Close'].iloc[-1]) if 'Close' in df.columns else None
+    if close is None:
+        return {"signals": [], "score": 0, "label": "資料不足"}
+
+    signals = []
+    score = 0
+
+    rsi = calc_rsi(df).iloc[-1] if len(df) >= 15 else None
+    macd_df = calc_macd(df)
+    bb_df = calc_bollinger_bands(df)
+
+    macd = _to_float_or_none(macd_df['MACD'].iloc[-1]) if not macd_df.empty else None
+    macd_signal = _to_float_or_none(macd_df['MACD_signal'].iloc[-1]) if not macd_df.empty else None
+    bb_lower = _to_float_or_none(bb_df['BB_lower'].iloc[-1]) if not bb_df.empty else None
+
+    if rsi is not None and rsi <= 35:
+        signals.append("RSI偏低")
+        score += 1
+    if None not in (macd, macd_signal) and macd > macd_signal:
+        signals.append("MACD黃金交叉")
+        score += 1
+    if bb_lower is not None and close <= bb_lower * 1.02:
+        signals.append("接近布林下軌")
+        score += 1
+    if support_level is not None and close <= support_level * 1.02:
+        signals.append("接近支撐")
+        score += 1
+
+    if score >= 3:
+        label = "多指標共振（偏多）"
+    elif score == 2:
+        label = "部分共振（中性偏多）"
+    else:
+        label = "共振不足"
+
+    return {"signals": signals, "score": score, "label": label}
 
 
 # ---------------- 防呆 / 輔助函數 ----------------
@@ -427,7 +497,16 @@ def calculate_chip_signals(df: pd.DataFrame):
     return signals, score
 
 # ---------------- 決策引擎主函數 ----------------
-def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_risk=0, chip_strength=0):
+def decision_engine(
+    df,
+    start_zone=(None, None),
+    sell_zone=(None, None),
+    macro_risk=0,
+    chip_strength=0,
+    capital=1_000_000,
+    risk_pct=0.02,
+    market_trend="中性",
+):
     df = safe_dataframe(df)
     close = _to_float_or_none(df['Close'].iloc[-1])
     if close is None:
@@ -475,6 +554,7 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
     if resistance_level is None:
         resistance_level = inferred_resistance
     market_zone_status = classify_market_zone(close, multi_zones)
+    weekly_trend = build_weekly_trend(df)
 
     # 行為層分析
     behavior, behavior_reasons = judge_market_state(
@@ -504,6 +584,10 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         }
 
     final_score = scorecard.get("final_score", 60)
+    resonance = build_indicator_resonance(df, support_level)
+
+    if market_trend == "空頭":
+        final_score = max(0, final_score - 10)
 
 
     buy_recommendation = build_buy_recommendation(
@@ -529,6 +613,16 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
             resistance_level,
             final_score
         )
+
+    position_size = calc_position_size(
+        capital=capital,
+        risk_pct=risk_pct,
+        entry_price=close,
+        stop_loss_price=stop_loss_price,
+    )
+
+    if market_trend == "空頭":
+        entry_advice = f"⚠ 大盤空頭濾網啟用：{entry_advice}（建議降低倉位或觀望）"
 
     return {
         "trend": trend,
@@ -560,4 +654,15 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "final_score": final_score,
         "score_grade": scorecard.get("grade"),
         "score_strength": scorecard.get("strength")
+        ,"weekly_trend": weekly_trend,
+        "multi_timeframe_signal": f"{weekly_trend} / 日K:{trend}",
+        "indicator_resonance": resonance,
+        "position_sizing": {
+            "capital": capital,
+            "risk_pct": risk_pct,
+            "suggested_position_value": position_size,
+            "formula": "capital × risk_pct / (entry_price - stop_loss)",
+        },
+        "market_filter": market_trend,
+        "ai_confidence_score": round(final_score, 2),
     }
