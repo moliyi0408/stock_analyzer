@@ -25,3 +25,29 @@ def calc_bollinger_bands(data, period=20, num_std=2):
         },
         index=close.index,
     )
+
+
+def calc_atr(data, period=14):
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("calc_atr expects a pandas DataFrame")
+
+    required_cols = {"High", "Low", "Close"}
+    if not required_cols.issubset(data.columns):
+        raise ValueError("DataFrame input must contain High, Low, Close columns")
+
+    high = pd.to_numeric(data["High"], errors="coerce")
+    low = pd.to_numeric(data["Low"], errors="coerce")
+    close = pd.to_numeric(data["Close"], errors="coerce")
+
+    prev_close = close.shift(1)
+    tr_components = pd.concat(
+        [
+            (high - low).abs(),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    )
+    true_range = tr_components.max(axis=1)
+    atr = true_range.rolling(period).mean()
+    return atr

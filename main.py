@@ -145,8 +145,30 @@ def print_analysis(stock_id, df, result):
         print(f"指標共振：{resonance.get('label', 'N/A')} / {resonance.get('signals', [])}")
     print(f"大盤濾網：{safe_get('market_filter', '中性')}")
     print(f"AI 信心分數：{safe_get('ai_confidence_score', 'N/A')} / 100")
+    confidence_breakdown = safe_get('ai_confidence_breakdown', {})
+    if isinstance(confidence_breakdown, dict) and confidence_breakdown:
+        print("AI 信心組成：")
+        for key in ["趨勢權重", "量價結構", "K線結構", "市場溫度", "大盤濾網", "籌碼", "總分"]:
+            if key in confidence_breakdown:
+                print(f"  {key}：{confidence_breakdown.get(key)}")
+
     print(f"支撐價：{safe_get('support_level')}")
     print(f"壓力價：{safe_get('resistance_level')}")
+    print(f"支撐區：{safe_get('support_zone')}")
+    print(f"壓力區：{safe_get('resistance_zone')}")
+    print(f"ATR：{safe_get('atr')}")
+    market_structure = safe_get('market_structure', {})
+    if isinstance(market_structure, dict):
+        print(f"市場結構：{market_structure.get('structure', 'N/A')}")
+        print(f"結構判斷：{market_structure.get('interpretation', 'N/A')}")
+
+    rr_metrics = safe_get('rr_metrics', {})
+    if isinstance(rr_metrics, dict) and rr_metrics:
+        print(
+            f"交易期望值 RR：{rr_metrics.get('rr')} "
+            f"(reward={rr_metrics.get('reward')}, risk={rr_metrics.get('risk')}, "
+            f"門檻={rr_metrics.get('rr_threshold')}, 通過={rr_metrics.get('rr_pass')})"
+        )
     patterns = safe_get('patterns', {})
     print(f"K 線結構：{translate_text(patterns.get('overall_bias','N/A'))} - {patterns.get('meaning','')}")
         # 多空層級支撐/壓力

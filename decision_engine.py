@@ -12,6 +12,7 @@ from indicators import (
     calc_rsi,
     calc_macd,
     calc_bollinger_bands,
+    calc_atr,
 )
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
 from strategy.position import calc_position_size
@@ -205,6 +206,140 @@ def infer_support_resistance_from_zones(multi_zones, close):
     support_level = max((high for _, high in supports if high <= close), default=None)
     resistance_level = min((low for low, _ in resistances if low >= close), default=None)
     return support_level, resistance_level
+
+
+def build_dynamic_price_zone(level, atr, fallback_buffer=0.01):
+    level = _to_float_or_none(level)
+    atr = _to_float_or_none(atr)
+    if level is None:
+        return None
+
+    buffer_size = atr if atr is not None and atr > 0 else level * fallback_buffer
+    lower = round(level - buffer_size, 2)
+    upper = round(level + buffer_size, 2)
+    return [min(lower, upper), max(lower, upper)]
+
+
+def detect_market_structure(df: pd.DataFrame, window=10):
+    if df is None or len(df) < window * 2 or 'High' not in df.columns or 'Low' not in df.columns:
+        return {
+            "structure": "資料不足",
+            "interpretation": "樣本不足，無法判斷市場結構",
+            "higher_high": None,
+            "higher_low": None,
+        }
+
+    highs = pd.to_numeric(df['High'], errors='coerce')
+    lows = pd.to_numeric(df['Low'], errors='coerce')
+
+    recent_high = _to_float_or_none(highs.iloc[-window:].max())
+    prev_high = _to_float_or_none(highs.iloc[-window * 2:-window].max())
+    recent_low = _to_float_or_none(lows.iloc[-window:].min())
+    prev_low = _to_float_or_none(lows.iloc[-window * 2:-window].min())
+
+    if None in (recent_high, prev_high, recent_low, prev_low):
+        return {
+            "structure": "資料不足",
+            "interpretation": "高低點資料缺失，無法判斷",
+            "higher_high": None,
+            "higher_low": None,
+        }
+
+    higher_high = recent_high > prev_high
+    higher_low = recent_low > prev_low
+    lower_high = recent_high < prev_high
+    lower_low = recent_low < prev_low
+
+    if higher_high and higher_low:
+        structure = "HH / HL"
+        interpretation = "多頭延續"
+    elif lower_high and lower_low:
+        structure = "LH / LL"
+        interpretation = "空頭延續"
+    elif higher_high and lower_low:
+        structure = "HH / LL"
+        interpretation = "高波動轉折，留意假突破"
+    elif lower_high and higher_low:
+        structure = "LH / HL"
+        interpretation = "收斂整理，等待方向"
+    else:
+        structure = "EQ"
+        interpretation = "區間震盪"
+
+    return {
+        "structure": structure,
+        "interpretation": interpretation,
+        "higher_high": higher_high,
+        "higher_low": higher_low,
+    }
+
+
+def build_confidence_breakdown(scorecard, patterns, heat_score, market_trend):
+    trend_part = round(((scorecard.get("trend_score") or 50) - 50) * 0.35, 2)
+    volume_part = round(((scorecard.get("volume_structure_score") or 50) - 50) * 0.30, 2)
+
+    pattern_bias = (patterns or {}).get("overall_bias", "neutral")
+    candle_part = {
+        "bullish": 8,
+        "neutral": 0,
+        "bearish": -8,
+    }.get(pattern_bias, 0)
+
+    heat_part = 4
+    if heat_score >= 70:
+        heat_part = -12
+    elif heat_score >= 50:
+        heat_part = -6
+    elif heat_score >= 20:
+        heat_part = 0
+
+    market_filter_part = {"多頭": 4, "中性": 0, "空頭": -6}.get(market_trend, 0)
+    chip_part = round(((scorecard.get("chip_score") or 50) - 50) * 0.20, 2)
+
+    total = round(
+        50
+        + trend_part
+        + volume_part
+        + candle_part
+        + heat_part
+        + market_filter_part
+        + chip_part,
+        2,
+    )
+
+    return {
+        "趨勢權重": trend_part,
+        "量價結構": volume_part,
+        "K線結構": candle_part,
+        "市場溫度": heat_part,
+        "大盤濾網": market_filter_part,
+        "籌碼": chip_part,
+        "總分": max(0, min(100, total)),
+    }
+
+
+def calculate_rr_metrics(entry_price, stop_loss, take_profit, min_rr=1.5):
+    entry_price = _to_float_or_none(entry_price)
+    stop_loss = _to_float_or_none(stop_loss)
+    take_profit = _to_float_or_none(take_profit)
+
+    if None in (entry_price, stop_loss, take_profit):
+        return {"risk": None, "reward": None, "rr": None, "rr_threshold": min_rr, "rr_pass": False}
+
+    risk = round(entry_price - stop_loss, 4)
+    reward = round(take_profit - entry_price, 4)
+
+    if risk <= 0:
+        return {"risk": risk, "reward": reward, "rr": None, "rr_threshold": min_rr, "rr_pass": False}
+
+    rr = round(reward / risk, 2)
+    return {
+        "risk": risk,
+        "reward": reward,
+        "rr": rr,
+        "rr_threshold": min_rr,
+        "rr_pass": rr >= min_rr,
+    }
 
 
 def determine_add_targets(start_low, chip_strength):
@@ -555,6 +690,11 @@ def decision_engine(
         resistance_level = inferred_resistance
     market_zone_status = classify_market_zone(close, multi_zones)
     weekly_trend = build_weekly_trend(df)
+    atr_series = calc_atr(df)
+    latest_atr = _to_float_or_none(atr_series.iloc[-1]) if len(atr_series) else None
+    support_zone = build_dynamic_price_zone(support_level, latest_atr)
+    resistance_zone = build_dynamic_price_zone(resistance_level, latest_atr)
+    market_structure = detect_market_structure(df)
 
     # 行為層分析
     behavior, behavior_reasons = judge_market_state(
@@ -589,6 +729,8 @@ def decision_engine(
     if market_trend == "空頭":
         final_score = max(0, final_score - 10)
 
+    confidence_breakdown = build_confidence_breakdown(scorecard, patterns, heat_score, market_trend)
+
 
     buy_recommendation = build_buy_recommendation(
             close=close,
@@ -613,6 +755,9 @@ def decision_engine(
             resistance_level,
             final_score
         )
+    rr_metrics = calculate_rr_metrics(close, stop_loss_price, take_profit_price, min_rr=1.5)
+    if not rr_metrics["rr_pass"]:
+        entry_advice = f"RR {rr_metrics.get('rr')} 低於門檻 {rr_metrics['rr_threshold']}，建議略過此次交易"
 
     position_size = calc_position_size(
         capital=capital,
@@ -642,8 +787,12 @@ def decision_engine(
         "patterns": patterns,
         "support_level": support_level,
         "resistance_level": resistance_level,
+        "support_zone": support_zone,
+        "resistance_zone": resistance_zone,
+        "atr": latest_atr,
         "multi_zones": multi_zones,
         "market_zone_status": market_zone_status,
+        "market_structure": market_structure,
         "volume_state": volume_state,
         "price_volume_signal": price_volume_signal,
         "avg_volume_20": latest_avg_volume,
@@ -664,5 +813,7 @@ def decision_engine(
             "formula": "capital × risk_pct / (entry_price - stop_loss)",
         },
         "market_filter": market_trend,
-        "ai_confidence_score": round(final_score, 2),
+        "ai_confidence_score": round(confidence_breakdown["總分"], 2),
+        "ai_confidence_breakdown": confidence_breakdown,
+        "rr_metrics": rr_metrics,
     }
