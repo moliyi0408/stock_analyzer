@@ -11,6 +11,7 @@ from indicators import (
     detect_price_volume_pattern
 )
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
+from strategy.screening import evaluate_primary_uptrend_candidate
 
 
 def _to_float_or_none(value):
@@ -286,10 +287,18 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         )
     chip_signals, chip_score = calculate_chip_signals(df)
 
+    # 主升段前兆篩選
+    screening_result = evaluate_primary_uptrend_candidate(df)
+    is_primary_uptrend_candidate = screening_result["is_primary_uptrend_candidate"]
+    primary_uptrend_candidate_reasons = screening_result["primary_uptrend_candidate_reasons"]
+    primary_uptrend_candidate_signals = screening_result["primary_uptrend_candidate_signals"]
+
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
             df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength + chip_score, support_level, resistance_level
         )
+    if is_primary_uptrend_candidate:
+        entry_advice = f"{entry_advice}；符合主升段前兆，等待突破確認"
 
     return {
         "trend": trend,
@@ -302,6 +311,9 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "hold_advice": hold_advice,
         "reduce_target": reduce_target,
         "entry_advice": entry_advice,
+        "is_primary_uptrend_candidate": is_primary_uptrend_candidate,
+        "primary_uptrend_candidate_reasons": primary_uptrend_candidate_reasons,
+        "primary_uptrend_candidate_signals": primary_uptrend_candidate_signals,
 
         "stop_loss": stop_loss_price,
         "take_profit": take_profit_price,
