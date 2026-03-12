@@ -1,8 +1,17 @@
 # indicators/momentum.py
 import pandas as pd
 
-def calc_rsi(df, period=14):
-    delta = df["Close"].diff()
+def calc_rsi(data, period=14):
+    if isinstance(data, pd.DataFrame):
+        if "Close" not in data.columns:
+            raise ValueError("DataFrame input must contain a 'Close' column")
+        close = data["Close"]
+    elif isinstance(data, pd.Series):
+        close = data
+    else:
+        raise TypeError("calc_rsi expects a pandas DataFrame or Series")
+
+    delta = close.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 

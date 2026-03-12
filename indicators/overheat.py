@@ -15,7 +15,7 @@ def calc_overheat_score(df, start_zone, resistance_zones):
     current_price = close.iloc[-1]
 
     # RSI
-    rsi_series = calc_rsi(close)
+    rsi_series = calc_rsi(df)
     rsi = rsi_series.iloc[-1]
 
     if rsi < 65:
