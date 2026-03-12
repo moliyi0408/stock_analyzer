@@ -121,8 +121,66 @@ def print_analysis(stock_id, df, result):
             return "市場偏保守，觀察是否出現轉強"
         return "代表目前市場情緒狀態"
 
+    def format_price(value):
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+        return str(value)
 
-    # 其他決策結果
+    def confidence_grade_and_action(score):
+        if not isinstance(score, (int, float)):
+            return "未知", "資料不足，先觀察"
+        if score >= 70:
+            return "高", "可積極操作（仍需遵守停損）"
+        if score >= 50:
+            return "中", "可小額試單，等待訊號確認"
+        return "低", "等待訊號，不急著進場"
+
+    def explain_multi_timeframe(signal):
+        signal_text = str(signal)
+        if "週K空頭" in signal_text and "日K:空頭" in signal_text:
+            return "短線觀望，等待反彈確認；長線偏空，僅在支撐區考慮小量分批"
+        if "週K空頭" in signal_text and "日K:多頭" in signal_text:
+            return "短線有反彈，但中長線仍偏空，宜快進快出"
+        if "週K多頭" in signal_text and "日K:空頭" in signal_text:
+            return "長線趨勢仍在，但短線回檔中，可等止跌再承接"
+        if "週K多頭" in signal_text and "日K:多頭" in signal_text:
+            return "多週期同向偏多，可依拉回分批佈局"
+        return "多時間框架訊號不一致，建議先等方向更清楚"
+
+    def build_stop_loss_hint(close, stop_loss, atr_value):
+        if not all(isinstance(v, (int, float)) for v in [close, stop_loss]):
+            return "資料不足，無法估算建議停損區間"
+        low = round(stop_loss * 0.99, 2)
+        high = round(stop_loss * 1.01, 2)
+        hint = f"建議停損區間：約 {low} ~ {high}（可依波動調整 ±1%）"
+        if isinstance(atr_value, (int, float)):
+            trailing = round(max(stop_loss, close - atr_value * 0.8), 2)
+            hint += f"；浮動停損參考：{trailing}"
+        return hint
+
+    def build_take_profit_targets(close, take_profit, resistance_zone):
+        if not isinstance(take_profit, (int, float)):
+            return "資料不足，無法建立分段停利"
+        if isinstance(resistance_zone, list) and len(resistance_zone) == 2:
+            zone_low, zone_high = sorted(resistance_zone)
+            first_target = round(zone_low, 2)
+            second_target = round(zone_high, 2)
+        elif isinstance(close, (int, float)):
+            first_target = round(close + (take_profit - close) * 0.6, 2)
+            second_target = round(take_profit, 2)
+        else:
+            first_target = round(take_profit * 0.97, 2)
+            second_target = round(take_profit, 2)
+        return f"第一目標：{first_target}；第二目標：{second_target}（可分批獲利）"
+
+    def build_zone_bar(label, zone, fill="█"):
+        if isinstance(zone, list) and len(zone) == 2:
+            low, high = sorted(zone)
+            return f"{label}：{fill*5} {low:.2f} ~ {high:.2f}"
+        return f"{label}：資料不足"
+
+
+    print("\n--- 市場摘要 ---")
     print(f"趨勢：{safe_get('trend')}")
     print(f"價格位置：{safe_get('position')}")
     print(f"五日線狀態：{safe_get('ma5_status')}")
@@ -134,6 +192,8 @@ def print_analysis(stock_id, df, result):
     )
     print(f"行為判斷：{safe_get('behavior')}")
     print(f"行為理由：{translate_text(safe_get('behavior_reasons'))}")
+
+    print("\n--- 策略建議 ---")
     print(f"量能狀態：{safe_get('volume_state')}")
     print(f"量價訊號：{safe_get('price_volume_signal')}")
     print(f"20 日均量：{safe_get('avg_volume_20')}")
@@ -181,25 +241,44 @@ def print_analysis(stock_id, df, result):
         print(f"買入策略：{buy_reco.get('strategy', 'N/A')}")
         print(f"建議買入區間：{zone_display}")
         print(f"分批買點：{tiers_display}")
+        print("買入執行提醒：若跌入支撐區可分批買入，並依 ATR 與量價訊號動態調整掛單")
         print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
-    with_explanation("停損參考價", safe_get('stop_loss'), "跌破此價位代表原先判斷可能失效")
-    with_explanation("停利參考價", safe_get('take_profit'), "接近此區可分批獲利了結，避免回吐")
+    atr_value = safe_get('atr')
+    stop_loss = safe_get('stop_loss')
+    with_explanation("停損參考價", stop_loss, "跌破此價位代表原先判斷可能失效")
+    print(f"  ↳ 白話：{build_stop_loss_hint(close_price, stop_loss, atr_value)}")
+
+    take_profit = safe_get('take_profit')
+    with_explanation("停利參考價", take_profit, "接近此區可分批獲利了結，避免回吐")
+    print(f"  ↳ 白話：{build_take_profit_targets(close_price, take_profit, safe_get('resistance_zone'))}")
     sizing = safe_get('position_sizing', {})
     if isinstance(sizing, dict) and sizing:
+        suggested_value = sizing.get('suggested_position_value')
         print(
-            f"建議倉位金額：{sizing.get('suggested_position_value', 'N/A')} "
+            f"建議倉位金額：{suggested_value} "
             f"(風險比例 {sizing.get('risk_pct', 'N/A')})"
         )
-    print(f"多時間框架：{safe_get('multi_timeframe_signal')}")
+        if all(isinstance(v, (int, float)) for v in [suggested_value, close_price, stop_loss]):
+            share_estimate = suggested_value / close_price if close_price else 0
+            max_loss = share_estimate * (close_price - stop_loss)
+            print(f"最大承受損失金額：約 {max_loss:.2f}（跌破停損時的估算虧損）")
+
+    multi_signal = safe_get('multi_timeframe_signal')
+    print(f"多時間框架：{multi_signal}")
+    print(f"  ↳ 白話：{explain_multi_timeframe(multi_signal)}")
+
+    print("\n--- 技術指標 ---")
     resonance = safe_get('indicator_resonance', {})
     if isinstance(resonance, dict):
         print(f"指標共振：{resonance.get('label', 'N/A')} / {resonance.get('signals', [])}")
     print(f"大盤濾網：{safe_get('market_filter', '中性')}")
+    print("\n--- AI 分析 ---")
     ai_confidence_score = safe_get('ai_confidence_score', 'N/A')
+    confidence_grade, confidence_action = confidence_grade_and_action(ai_confidence_score)
     with_explanation(
         "AI 信心分數",
-        f"{ai_confidence_score} / 100",
-        explain_confidence(ai_confidence_score),
+        f"{ai_confidence_score} / 100（{confidence_grade}）",
+        f"{explain_confidence(ai_confidence_score)}；建議：{confidence_action}",
     )
     confidence_breakdown = safe_get('ai_confidence_breakdown', {})
     if isinstance(confidence_breakdown, dict) and confidence_breakdown:
@@ -212,8 +291,17 @@ def print_analysis(stock_id, df, result):
     with_explanation("壓力價", safe_get('resistance_level'), "常見賣壓區，接近時容易震盪")
     with_explanation("支撐區", safe_get('support_zone'), "回檔至此區可觀察是否止跌")
     with_explanation("壓力區", safe_get('resistance_zone'), "反彈至此區可觀察是否遇到賣壓")
-    atr_value = safe_get('atr')
     with_explanation("ATR", atr_value, explain_atr(atr_value))
+
+    print("\n--- 區間可視化（文字版）---")
+    print(build_zone_bar("支撐區", safe_get('support_zone'), fill="█"))
+    print(build_zone_bar("壓力區", safe_get('resistance_zone'), fill="█"))
+    buy_tiers = buy_reco.get('tiers', []) if isinstance(buy_reco, dict) else []
+    if isinstance(buy_tiers, list) and buy_tiers:
+        tier_text = " ▓ ".join(format_price(tier.get('price')) for tier in buy_tiers if isinstance(tier, dict))
+        if tier_text:
+            print(f"分批買點：{tier_text}")
+
     market_structure = safe_get('market_structure', {})
     if isinstance(market_structure, dict):
         structure = market_structure.get('structure', 'N/A')
