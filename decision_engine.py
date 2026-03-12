@@ -146,25 +146,142 @@ def determine_add_targets(start_low, chip_strength):
     return add_targets
 
 
-def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level):
+def _score_to_grade(final_score):
+    if final_score >= 75:
+        return "A", "強"
+    if final_score >= 60:
+        return "B", "中"
+    return "C", "弱"
+
+
+def build_factor_scorecard(df, chip_df=None):
+    """建立多因子評分卡，輸出各子分數與總分。"""
+    df = safe_dataframe(df)
+    chip_source = chip_df if chip_df is not None else df
+
+    close = _to_float_or_none(df['Close'].iloc[-1])
+    ma20 = _to_float_or_none(df['MA20'].iloc[-1]) if 'MA20' in df.columns else close
+    ma60 = _to_float_or_none(df['MA60'].iloc[-1]) if 'MA60' in df.columns else close
+
+    trend = determine_trend(close, ma20, ma60)
+    trend_score = {
+        "多頭趨勢": 85,
+        "盤整趨勢": 55,
+        "空頭趨勢": 25,
+        "趨勢資料不足": 45
+    }.get(trend, 45)
+
+    start_low, start_high = safe_start_zone(df)
+    sell_low, sell_high = safe_sell_zone(start_low, start_high)
+    position = determine_position(close, start_low, start_high, sell_low, sell_high)
+    position_score = {
+        "起漲區（低風險）": 85,
+        "延伸段（趨勢續航）": 65,
+        "壓力區（派發風險）": 35,
+        "未知": 50
+    }.get(position, 50)
+
+    vol_df = calc_volume_baseline(df.copy())
+    volume_state = detect_volume_state(vol_df)
+    price_volume_signal = detect_price_volume_pattern(vol_df)
+    latest_avg_volume = _to_float_or_none(vol_df["avg_volume_20"].iloc[-1]) if "avg_volume_20" in vol_df.columns else None
+    latest_volume = _to_float_or_none(vol_df["Volume"].iloc[-1])
+    volume_ratio = (latest_volume / latest_avg_volume) if (latest_volume is not None and latest_avg_volume not in (None, 0)) else None
+
+    volume_structure_score = 50
+    if volume_state in ("放量", "爆量"):
+        volume_structure_score += 15
+    elif volume_state == "縮量":
+        volume_structure_score -= 8
+
+    if price_volume_signal in ("價量齊揚（健康）", "縮量上漲（惜售）"):
+        volume_structure_score += 15
+    elif price_volume_signal == "價跌量增（出貨警訊）":
+        volume_structure_score -= 18
+
+    if volume_ratio is not None:
+        if 1.1 <= volume_ratio <= 2.5:
+            volume_structure_score += 8
+        elif volume_ratio > 3:
+            volume_structure_score -= 6
+    volume_structure_score = max(0, min(100, volume_structure_score))
+
+    chip_signals, chip_signal_score = calculate_chip_signals(chip_source)
+    chip_score = max(0, min(100, chip_signal_score * 25))
+
+    heat_score = calculate_overheat(df)
+    risk_penalty = 0
+    if heat_score >= 70:
+        risk_penalty += 20
+    elif heat_score >= 50:
+        risk_penalty += 10
+
+    if position == "壓力區（派發風險）":
+        risk_penalty += 12
+
+    support_level, resistance_level = get_latest_support_resistance(df)
+    if close is not None and resistance_level is not None and resistance_level > 0:
+        if close >= resistance_level * 0.98:
+            risk_penalty += 8
+
+    raw_score = (
+        trend_score * 0.30
+        + position_score * 0.25
+        + volume_structure_score * 0.20
+        + chip_score * 0.25
+    )
+    final_score = round(max(0, min(100, raw_score - risk_penalty)), 2)
+    grade, strength = _score_to_grade(final_score)
+
+    return {
+        "trend_score": trend_score,
+        "position_score": position_score,
+        "volume_structure_score": volume_structure_score,
+        "chip_score": chip_score,
+        "risk_penalty": risk_penalty,
+        "final_score": final_score,
+        "grade": grade,
+        "strength": strength,
+        "weights": {
+            "trend": 0.30,
+            "position": 0.25,
+            "volume_structure": 0.20,
+            "chip": 0.25,
+        },
+        "context": {
+            "trend": trend,
+            "position": position,
+            "volume_state": volume_state,
+            "price_volume_signal": price_volume_signal,
+            "volume_ratio": volume_ratio,
+            "heat_score": heat_score,
+            "chip_signals": chip_signals,
+            "chip_signal_score": chip_signal_score,
+            "support_level": support_level,
+            "resistance_level": resistance_level,
+        }
+    }
+
+
+def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level, final_score=60):
     ma5 = _to_float_or_none(ma5)
     stop_loss_price = min(df['Close'].iloc[-2:].min(), support_level if support_level else df['Close'].iloc[-1]*0.9)
     take_profit_price = sell_high if sell_high is not None else (resistance_level if resistance_level is not None else df['Close'].iloc[-1]*1.2)
     add_targets = determine_add_targets(start_low, chip_strength)
     reduce_target = ma5
 
-    # 持有者策略
-    if trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
+    # 持有者策略（分數閾值驅動）
+    if final_score >= 75 and trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
         hold_advice = f"續抱，跌破 5 日線減碼至 {reduce_target:.2f}" if reduce_target is not None else "續抱，但均線資料不足請保守"
-    elif ma5_status.startswith("跌破"):
+    elif final_score < 60 or ma5_status.startswith("跌破"):
         hold_advice = f"反彈減碼，控管風險，停損點 {stop_loss_price:.2f}"
     else:
         hold_advice = "保守觀察"
 
-    # 空手者策略
-    if position == "起漲區（低風險）":
+    # 空手者策略（分數閾值驅動）
+    if final_score >= 75 and position == "起漲區（低風險）":
         entry_advice = f"可分批布局，目標加碼價 {add_targets}"
-    elif position == "延伸段（趨勢續航）":
+    elif final_score >= 60 and position == "延伸段（趨勢續航）":
         entry_advice = f"等待拉回 5 日線 ({ma5:.2f})" if ma5 is not None else "等待均線資料完整後再評估"
     else:
         entry_advice = "不追高，等待修正"
@@ -204,7 +321,7 @@ def calculate_chip_signals(df: pd.DataFrame):
             score += 1
             signals["foreign_buy_streak_signal"] = True
 
-    if len(df) >= 2:
+    if len(df) >= 2 and 'Close' in df.columns:
         price_change = _to_float_or_none(df['Close'].iloc[-1])
         prev_price = _to_float_or_none(df['Close'].iloc[-2])
         margin_change = None
@@ -285,10 +402,37 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
             price_volume_signal=price_volume_signal
         )
     chip_signals, chip_score = calculate_chip_signals(df)
+    try:
+        scorecard = build_factor_scorecard(df)
+    except Exception:
+        scorecard = {
+            "trend_score": None,
+            "position_score": None,
+            "volume_structure_score": None,
+            "chip_score": None,
+            "risk_penalty": None,
+            "final_score": 60,
+            "grade": "B",
+            "strength": "中",
+            "weights": {},
+            "context": {}
+        }
+
+    final_score = scorecard.get("final_score", 60)
 
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
-            df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength + chip_score, support_level, resistance_level
+            df,
+            trend,
+            ma5_status,
+            position,
+            ma5,
+            start_low,
+            sell_high,
+            chip_strength + chip_score,
+            support_level,
+            resistance_level,
+            final_score
         )
 
     return {
@@ -315,5 +459,9 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "avg_volume_20": latest_avg_volume,
         "volume_ratio": volume_ratio,
         "chip_signals": chip_signals,
-        "chip_score": chip_score
+        "chip_score": chip_score,
+        "scorecard": scorecard,
+        "final_score": final_score,
+        "score_grade": scorecard.get("grade"),
+        "score_strength": scorecard.get("strength")
     }
