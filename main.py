@@ -133,6 +133,18 @@ def print_analysis(stock_id, df, result):
         print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
     print(f"停損參考價：{safe_get('stop_loss')}")
     print(f"停利參考價：{safe_get('take_profit')}")
+    sizing = safe_get('position_sizing', {})
+    if isinstance(sizing, dict) and sizing:
+        print(
+            f"建議倉位金額：{sizing.get('suggested_position_value', 'N/A')} "
+            f"(風險比例 {sizing.get('risk_pct', 'N/A')})"
+        )
+    print(f"多時間框架：{safe_get('multi_timeframe_signal')}")
+    resonance = safe_get('indicator_resonance', {})
+    if isinstance(resonance, dict):
+        print(f"指標共振：{resonance.get('label', 'N/A')} / {resonance.get('signals', [])}")
+    print(f"大盤濾網：{safe_get('market_filter', '中性')}")
+    print(f"AI 信心分數：{safe_get('ai_confidence_score', 'N/A')} / 100")
     print(f"支撐價：{safe_get('support_level')}")
     print(f"壓力價：{safe_get('resistance_level')}")
     patterns = safe_get('patterns', {})
