@@ -65,6 +65,10 @@ def save_analysis_log(stock_id, df, result, base_dir="logs"):
         "close_price": float(df['Close'].iloc[-1]) if 'Close' in df.columns else None,
         "chip_score": safe_result.get("chip_score") if isinstance(safe_result, dict) else None,
         "chip_signals": safe_result.get("chip_signals") if isinstance(safe_result, dict) else None,
+        "scorecard": safe_result.get("scorecard") if isinstance(safe_result, dict) else None,
+        "final_score": safe_result.get("final_score") if isinstance(safe_result, dict) else None,
+        "score_grade": safe_result.get("score_grade") if isinstance(safe_result, dict) else None,
+        "score_strength": safe_result.get("score_strength") if isinstance(safe_result, dict) else None,
         "decision": safe_result
     }
 
