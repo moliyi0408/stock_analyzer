@@ -75,12 +75,58 @@ def print_analysis(stock_id, df, result):
         value = result.get(key, default)
         return default if value is None else value
 
+    def with_explanation(label, value, explanation):
+        print(f"{label}：{value}")
+        if explanation:
+            print(f"  ↳ 白話：{explanation}")
+
+    def explain_confidence(score):
+        if not isinstance(score, (int, float)):
+            return "無法判斷信心強弱"
+        if score >= 80:
+            return "信心高，屬於偏強訊號"
+        if score >= 60:
+            return "信心中上，但仍需搭配風險控管"
+        if score >= 40:
+            return "信心普通，建議等待更明確訊號"
+        return "信心偏弱，先以保守策略為主"
+
+    def explain_atr(atr_value):
+        if not isinstance(atr_value, (int, float)):
+            return "代表平均波動幅度"
+        return f"平均一天大約波動 {round(atr_value, 2)} 元"
+
+    def explain_rr(rr):
+        if not isinstance(rr, (int, float)):
+            return "報酬風險比越高，交易效率通常越好"
+        if rr >= 3:
+            return "報酬風險比良好，屬於可考慮的交易"
+        if rr >= 2:
+            return "報酬風險比尚可，建議降低倉位"
+        return "報酬風險比偏低，需更嚴格挑選進場"
+
+    def explain_market_temp(temp):
+        if temp == "過熱":
+            return "短線追價風險高，容易震盪"
+        if temp == "偏熱":
+            return "市場偏熱，宜分批操作"
+        if temp == "中性":
+            return "市場情緒平衡，可依計畫交易"
+        if temp == "偏冷":
+            return "市場偏保守，觀察是否出現轉強"
+        return "代表目前市場情緒狀態"
+
 
     # 其他決策結果
     print(f"趨勢：{safe_get('trend')}")
     print(f"價格位置：{safe_get('position')}")
     print(f"五日線狀態：{safe_get('ma5_status')}")
-    print(f"市場溫度：{safe_get('market_temp')}（分數 {safe_get('heat_score')}）")
+    market_temp = safe_get('market_temp')
+    with_explanation(
+        "市場溫度",
+        f"{market_temp}（分數 {safe_get('heat_score')}）",
+        explain_market_temp(market_temp),
+    )
     print(f"行為判斷：{safe_get('behavior')}")
     print(f"行為理由：{translate_text(safe_get('behavior_reasons'))}")
     print(f"量能狀態：{safe_get('volume_state')}")
@@ -131,8 +177,8 @@ def print_analysis(stock_id, df, result):
         print(f"建議買入區間：{zone_display}")
         print(f"分批買點：{tiers_display}")
         print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
-    print(f"停損參考價：{safe_get('stop_loss')}")
-    print(f"停利參考價：{safe_get('take_profit')}")
+    with_explanation("停損參考價", safe_get('stop_loss'), "跌破此價位代表原先判斷可能失效")
+    with_explanation("停利參考價", safe_get('take_profit'), "接近此區可分批獲利了結，避免回吐")
     sizing = safe_get('position_sizing', {})
     if isinstance(sizing, dict) and sizing:
         print(
@@ -144,7 +190,12 @@ def print_analysis(stock_id, df, result):
     if isinstance(resonance, dict):
         print(f"指標共振：{resonance.get('label', 'N/A')} / {resonance.get('signals', [])}")
     print(f"大盤濾網：{safe_get('market_filter', '中性')}")
-    print(f"AI 信心分數：{safe_get('ai_confidence_score', 'N/A')} / 100")
+    ai_confidence_score = safe_get('ai_confidence_score', 'N/A')
+    with_explanation(
+        "AI 信心分數",
+        f"{ai_confidence_score} / 100",
+        explain_confidence(ai_confidence_score),
+    )
     confidence_breakdown = safe_get('ai_confidence_breakdown', {})
     if isinstance(confidence_breakdown, dict) and confidence_breakdown:
         print("AI 信心組成：")
@@ -152,23 +203,28 @@ def print_analysis(stock_id, df, result):
             if key in confidence_breakdown:
                 print(f"  {key}：{confidence_breakdown.get(key)}")
 
-    print(f"支撐價：{safe_get('support_level')}")
-    print(f"壓力價：{safe_get('resistance_level')}")
-    print(f"支撐區：{safe_get('support_zone')}")
-    print(f"壓力區：{safe_get('resistance_zone')}")
-    print(f"ATR：{safe_get('atr')}")
+    with_explanation("支撐價", safe_get('support_level'), "常見買盤防守價位，跌破要提高警覺")
+    with_explanation("壓力價", safe_get('resistance_level'), "常見賣壓區，接近時容易震盪")
+    with_explanation("支撐區", safe_get('support_zone'), "回檔至此區可觀察是否止跌")
+    with_explanation("壓力區", safe_get('resistance_zone'), "反彈至此區可觀察是否遇到賣壓")
+    atr_value = safe_get('atr')
+    with_explanation("ATR", atr_value, explain_atr(atr_value))
     market_structure = safe_get('market_structure', {})
     if isinstance(market_structure, dict):
-        print(f"市場結構：{market_structure.get('structure', 'N/A')}")
-        print(f"結構判斷：{market_structure.get('interpretation', 'N/A')}")
+        structure = market_structure.get('structure', 'N/A')
+        interpretation = market_structure.get('interpretation', 'N/A')
+        with_explanation("市場結構", structure, "例如 LH/LL 代表短線仍偏弱，HH/HL 代表轉強")
+        with_explanation("結構判斷", interpretation, "描述目前多空是否延續或反轉")
 
     rr_metrics = safe_get('rr_metrics', {})
     if isinstance(rr_metrics, dict) and rr_metrics:
+        rr_value = rr_metrics.get('rr')
         print(
-            f"交易期望值 RR：{rr_metrics.get('rr')} "
+            f"交易期望值 RR：{rr_value} "
             f"(reward={rr_metrics.get('reward')}, risk={rr_metrics.get('risk')}, "
             f"門檻={rr_metrics.get('rr_threshold')}, 通過={rr_metrics.get('rr_pass')})"
         )
+        print(f"  ↳ 白話：{explain_rr(rr_value)}")
     patterns = safe_get('patterns', {})
     print(f"K 線結構：{translate_text(patterns.get('overall_bias','N/A'))} - {patterns.get('meaning','')}")
         # 多空層級支撐/壓力
