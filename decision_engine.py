@@ -5,7 +5,10 @@ from indicators import (
     get_support_resistance,
     get_multi_level_support_resistance,
     get_starting_zone,
-    get_selling_zone
+    get_selling_zone,
+    calc_volume_baseline,
+    detect_volume_state,
+    detect_price_volume_pattern
 )
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
 
@@ -198,6 +201,14 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
     heat_score = calculate_overheat(df)
     market_temp = determine_market_temp(heat_score)
 
+    # 量能結構
+    df = calc_volume_baseline(df)
+    volume_state = detect_volume_state(df)
+    price_volume_signal = detect_price_volume_pattern(df)
+    latest_avg_volume = _to_float_or_none(df["avg_volume_20"].iloc[-1]) if "avg_volume_20" in df.columns else None
+    latest_volume = _to_float_or_none(df["Volume"].iloc[-1])
+    volume_ratio = (latest_volume / latest_avg_volume) if (latest_volume is not None and latest_avg_volume not in (None, 0)) else None
+
     # K線結構 & 支撐壓力
     patterns = detect_candlestick_patterns(df)
     support_level, resistance_level = get_latest_support_resistance(df)
@@ -210,7 +221,9 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
             support_level,
             {'total': heat_score, 'zones': multi_zones},
             patterns,
-            zones=multi_zones
+            zones=multi_zones,
+            volume_state=volume_state,
+            price_volume_signal=price_volume_signal
         )
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
@@ -235,5 +248,9 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "support_level": support_level,
         "resistance_level": resistance_level,
         "multi_zones": multi_zones,
-        "market_zone_status": market_zone_status
+        "market_zone_status": market_zone_status,
+        "volume_state": volume_state,
+        "price_volume_signal": price_volume_signal,
+        "avg_volume_20": latest_avg_volume,
+        "volume_ratio": volume_ratio
     }
