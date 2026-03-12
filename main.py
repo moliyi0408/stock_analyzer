@@ -4,6 +4,32 @@ from indicators import calculate_ma
 from decision_engine import decision_engine
 from logs import save_analysis_log
 
+
+TRANSLATIONS = {
+    "bullish": "偏多",
+    "bearish": "偏空",
+    "neutral": "中性",
+    "short_term": "短線",
+    "swing": "波段",
+    "long_term": "長線",
+    "foreign_buy_streak": "外資連買天數",
+    "foreign_buy_streak_signal": "外資連買訊號",
+    "price_up_margin_down": "股價上漲融資下降",
+    "holder_accumulation": "大戶增持籌碼",
+}
+
+
+def translate_text(value):
+    if isinstance(value, str):
+        for en, zh in TRANSLATIONS.items():
+            value = value.replace(en, zh)
+        return value
+    if isinstance(value, dict):
+        return {TRANSLATIONS.get(k, k): translate_text(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [translate_text(v) for v in value]
+    return value
+
 def main():
     stock_id = "1504"
 
@@ -56,13 +82,13 @@ def print_analysis(stock_id, df, result):
     print(f"五日線狀態：{safe_get('ma5_status')}")
     print(f"市場溫度：{safe_get('market_temp')}（分數 {safe_get('heat_score')}）")
     print(f"行為判斷：{safe_get('behavior')}")
-    print(f"行為理由：{safe_get('behavior_reasons')}")
+    print(f"行為理由：{translate_text(safe_get('behavior_reasons'))}")
     print(f"量能狀態：{safe_get('volume_state')}")
     print(f"量價訊號：{safe_get('price_volume_signal')}")
     print(f"20 日均量：{safe_get('avg_volume_20')}")
     print(f"量比（當日量/20 日均量）：{safe_get('volume_ratio')}")
     print(f"籌碼分數：{safe_get('chip_score', 0)}")
-    print(f"籌碼訊號：{safe_get('chip_signals', {})}")
+    print(f"籌碼訊號：{translate_text(safe_get('chip_signals', {}))}")
     print(f"持有者策略：{safe_get('hold_advice')}")
     print(f"空手者策略：{safe_get('entry_advice')}")
     print(f"停損參考價：{safe_get('stop_loss')}")
@@ -70,7 +96,7 @@ def print_analysis(stock_id, df, result):
     print(f"支撐價：{safe_get('support_level')}")
     print(f"壓力價：{safe_get('resistance_level')}")
     patterns = safe_get('patterns', {})
-    print(f"K 線結構：{patterns.get('overall_bias','N/A')} - {patterns.get('meaning','')}")
+    print(f"K 線結構：{translate_text(patterns.get('overall_bias','N/A'))} - {patterns.get('meaning','')}")
         # 多空層級支撐/壓力
     """
     multi_zones = safe_get("multi_zones", {})
