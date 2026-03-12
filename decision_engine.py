@@ -146,6 +146,66 @@ def determine_add_targets(start_low, chip_strength):
     return add_targets
 
 
+def build_buy_recommendation(close, support_level, start_low, final_score, position, trend):
+    """建立可直接下單參考的買入建議價位（分批）。"""
+    close = _to_float_or_none(close)
+    support_level = _to_float_or_none(support_level)
+    start_low = _to_float_or_none(start_low)
+
+    if close is None:
+        return {
+            "strategy": "資料不足，無法提供買入價位",
+            "tiers": [],
+            "risk_note": "請確認行情資料完整後再評估",
+            "preferred_buy_zone": None,
+        }
+
+    # 以「接近現價且不追高」為原則，避免回傳高於現價的加碼點
+    primary_anchor = support_level if support_level is not None else (start_low if start_low is not None else close)
+    # 若錨點高於現價，代表可能已跌破原支撐，改用現價附近折價做承接
+    if primary_anchor > close:
+        primary_anchor = close * 0.99
+
+    aggressive = final_score >= 75 and position == "起漲區（低風險）" and trend == "多頭趨勢"
+    if aggressive:
+        percents = [1.00, 0.97, 0.94]
+        strategy = "偏積極分批布局"
+    elif final_score >= 60:
+        percents = [0.99, 0.96, 0.92]
+        strategy = "中性分批承接"
+    else:
+        percents = [0.98, 0.94]
+        strategy = "保守等待，不追價"
+
+    tiers = []
+    for idx, pct in enumerate(percents, start=1):
+        price = round(primary_anchor * pct, 2)
+        if price <= close * 1.01:  # 防止建議價偏離現價過高
+            tiers.append({"batch": idx, "price": price})
+
+    # 避免重複/逆序
+    dedup_prices = []
+    for tier in tiers:
+        if tier["price"] not in dedup_prices:
+            dedup_prices.append(tier["price"])
+    tiers = [{"batch": i + 1, "price": p} for i, p in enumerate(sorted(dedup_prices, reverse=True))]
+
+    preferred_buy_zone = None
+    if tiers:
+        high = tiers[0]["price"]
+        low = tiers[-1]["price"]
+        preferred_buy_zone = [low, high]
+
+    risk_note = "若跌破最末買點且無法站回，建議暫停加碼並重新評估"
+
+    return {
+        "strategy": strategy,
+        "tiers": tiers,
+        "risk_note": risk_note,
+        "preferred_buy_zone": preferred_buy_zone,
+    }
+
+
 def _score_to_grade(final_score):
     if final_score >= 75:
         return "A", "強"
@@ -445,6 +505,16 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
 
     final_score = scorecard.get("final_score", 60)
 
+
+    buy_recommendation = build_buy_recommendation(
+            close=close,
+            support_level=support_level,
+            start_low=start_low,
+            final_score=final_score,
+            position=position,
+            trend=trend
+        )
+
     # 操作建議
     stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
             df,
@@ -471,6 +541,7 @@ def decision_engine(df, start_zone=(None, None), sell_zone=(None, None), macro_r
         "hold_advice": hold_advice,
         "reduce_target": reduce_target,
         "entry_advice": entry_advice,
+        "buy_recommendation": buy_recommendation,
 
         "stop_loss": stop_loss_price,
         "take_profit": take_profit_price,
