@@ -1,7 +1,7 @@
 # analysis/behavior.py
 from indicators import rebound_strength, selling_pressure, support_reclaim
 
-def judge_market_state(df, support, overheat, patterns, zones=None):
+def judge_market_state(df, support, overheat, patterns, zones=None, volume_state=None, price_volume_signal=None):
     """
     綜合判斷：洗盤 / 中性 / 出貨
     """
@@ -21,6 +21,11 @@ def judge_market_state(df, support, overheat, patterns, zones=None):
     if sell_press < 1.0:
         score += 1
         reasons.append("下跌量縮，非倒貨")
+
+    if price_volume_signal == "下跌量縮":
+        score += 1
+        reasons.append("量價結構：下跌量縮，籌碼相對穩定")
+
     if reclaim:
         score += 1
         reasons.append("跌破支撐後站回")
@@ -56,6 +61,14 @@ def judge_market_state(df, support, overheat, patterns, zones=None):
     if overheat and overheat.get('total', 0) > 60:
         score -= 1
         reasons.append("市場過熱，高檔風險")
+
+    if (
+        volume_state == "爆量"
+        and patterns
+        and patterns.get("details", {}).get("long_upper_days", 0) >= 2
+    ):
+        score -= 1
+        reasons.append("高檔爆量長上影，追價風險升高")
         
     # ---------- 最終判斷 ----------
 
