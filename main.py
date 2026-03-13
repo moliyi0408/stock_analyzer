@@ -1,5 +1,6 @@
 import pandas as pd
 from data.data_manager import get_feature_data
+from data.data_manager import get_fundamental
 from indicators import calculate_ma
 from decision_engine import decision_engine
 from logs import save_analysis_log
@@ -33,16 +34,24 @@ def translate_text(value):
 def main():
     stock_id = "1504"
 
-    # 1️⃣ 下載資料
+    # 1️⃣ 先確保基本面快取存在（函式內會自動處理 cache -> API -> cache）
+    fundamental_payload = get_fundamental(stock_id)
+    if fundamental_payload is None or not any(
+        fundamental_payload.get(section)
+        for section in ["income_statement", "balance_sheet", "cashflow_statement"]
+    ):
+        print(f"⚠ {stock_id} 基本面資料空，請檢查 API 或 cache")
+
+    # 2️⃣ 下載價量/籌碼資料（函式內會自動處理 cache）
     df = get_feature_data(stock_id, lookback_months=6, include_chip=True)
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")
         return
 
-    # 2️⃣ 計算均線 
+    # 3️⃣ 計算均線 
     df = calculate_ma(df, handler=lambda df, ma: pd.concat([df, pd.DataFrame(ma)], axis=1))
 
-    # 3️⃣ 呼叫決策引擎
+    # 4️⃣ 呼叫決策引擎
     try:
         result = decision_engine(df=df, chip_strength=5)
     except Exception as e:
@@ -56,10 +65,10 @@ def main():
             print(f"⚠ 最新資料快照: {latest_snapshot}")
             result = {}
 
-    # 4️⃣ 印出結果
+    # 5️⃣ 印出結果
     print_analysis(stock_id, df, result)
 
-    # 5️⃣ 儲存分析紀錄
+    # 6️⃣ 儲存分析紀錄
     save_analysis_log(stock_id=stock_id, df=df, result=result)
 
 
