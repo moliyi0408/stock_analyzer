@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict
 
 import pandas as pd
 import requests
 
+from data.storage_paths import FUNDAMENTAL_CACHE_DIR
+
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-CACHE_DIR = Path(__file__).resolve().parent / "cache"
 FUNDAMENTAL_TTL_DAYS = 90
 
 
@@ -54,8 +54,8 @@ def _is_stale(payload: Dict[str, Any]) -> bool:
 
 def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, Any]:
     """Get fundamental data from cache first, refresh every 90 days."""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_file = CACHE_DIR / f"{stock_id}_fundamental.json"
+    FUNDAMENTAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = FUNDAMENTAL_CACHE_DIR / f"{stock_id}_fundamental.json"
 
     if cache_file.exists() and not force_refresh:
         try:

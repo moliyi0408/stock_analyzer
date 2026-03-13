@@ -1,56 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from io import StringIO
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
-import requests
 from dateutil.relativedelta import relativedelta
 
-CACHE_DIR = Path(__file__).resolve().parent / "cache"
-
-
-def convert_tw_date(tw_date: str):
-    try:
-        parts = tw_date.split("/")
-        year = int(parts[0]) + 1911
-        month = int(parts[1])
-        day = int(parts[2])
-        return pd.Timestamp(year, month, day)
-    except Exception:
-        return pd.NaT
-
-
-def download_twse_csv_auto(stock_id: str, year_month: str) -> pd.DataFrame:
-    url = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=csv&date={year_month}01&stockNo={stock_id}"
-    response = requests.get(url, timeout=15)
-    response.encoding = "big5"
-
-    data = "\n".join([line for line in response.text.splitlines() if len(line.split('","')) > 8])
-    if not data:
-        return pd.DataFrame()
-
-    df = pd.read_csv(StringIO(data))
-    df.columns = [c.replace('"', "").strip() for c in df.columns]
-
-    for col in ["成交股數", "成交金額", "開盤價", "最高價", "最低價", "收盤價", "漲跌價差", "成交筆數"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace(",", "").str.replace("+", "").str.replace("X", "").str.strip(),
-                errors="coerce",
-            )
-
-    df["Date"] = df["日期"].apply(convert_tw_date) if "日期" in df.columns else pd.NaT
-    df["Close"] = df["收盤價"] if "收盤價" in df.columns else pd.NA
-    df["Volume"] = df["成交股數"] if "成交股數" in df.columns else pd.NA
-    df["Open"] = df["開盤價"] if "開盤價" in df.columns else pd.NA
-    df["High"] = df["最高價"] if "最高價" in df.columns else pd.NA
-    df["Low"] = df["最低價"] if "最低價" in df.columns else pd.NA
-
-    df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-    return df
+from data.storage_paths import PRICE_CACHE_DIR
+from data.twse_fetcher import download_twse_csv_auto
 
 
 def _get_last_n_months(n: int, end_date: datetime | None = None) -> list[str]:
@@ -91,7 +49,7 @@ def _merge_months(stock_id: str, months: Iterable[str]) -> pd.DataFrame:
 
 
 def _write_cache(path: Path, df: pd.DataFrame) -> None:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    PRICE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False, encoding="utf-8")
 
 
@@ -107,9 +65,9 @@ def _needs_refresh(df: pd.DataFrame) -> bool:
 def fetch_price(stock_id: str, lookback_months: int = 6, force_refresh: bool = False) -> pd.DataFrame:
     """Get TWSE price data with file cache.
 
-    Cache path: data/cache/{stock_id}_price.csv
+    Cache path: datas/price/{stock_id}_price.csv
     """
-    cache_file = CACHE_DIR / f"{stock_id}_price.csv"
+    cache_file = PRICE_CACHE_DIR / f"{stock_id}_price.csv"
     cached = _safe_read_price_cache(cache_file)
 
     if not force_refresh and not _needs_refresh(cached):
@@ -125,7 +83,12 @@ def fetch_price(stock_id: str, lookback_months: int = 6, force_refresh: bool = F
             refreshed = cached
         else:
             new_df = new_df[~new_df["Date"].isin(cached["Date"])]
-            refreshed = pd.concat([cached, new_df], ignore_index=True).sort_values("Date").drop_duplicates(subset=["Date"]).reset_index(drop=True)
+            refreshed = (
+                pd.concat([cached, new_df], ignore_index=True)
+                .sort_values("Date")
+                .drop_duplicates(subset=["Date"])
+                .reset_index(drop=True)
+            )
 
     if refreshed.empty:
         return pd.DataFrame()
