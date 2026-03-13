@@ -148,7 +148,7 @@ def load_income_statement_trend(stock_id: str) -> pd.DataFrame:
     return pivot_df
 
 
-def _latest_statement_row(df: pd.DataFrame) -> Dict[str, Any]:
+def _latest_statement_row(df: pd.DataFrame, aggfunc: str = "first") -> Dict[str, Any]:
     if df is None or df.empty:
         return {}
 
@@ -161,7 +161,7 @@ def _latest_statement_row(df: pd.DataFrame) -> Dict[str, Any]:
     if local_df.empty:
         return {}
 
-    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc="first").sort_index().reset_index()
+    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc=aggfunc).sort_index().reset_index()
     if pivot_df.empty:
         return {}
 
@@ -170,7 +170,7 @@ def _latest_statement_row(df: pd.DataFrame) -> Dict[str, Any]:
     return latest
 
 
-def _latest_non_null_from_statement(df: pd.DataFrame, aliases: Iterable[str]) -> Any:
+def _latest_non_null_from_statement(df: pd.DataFrame, aliases: Iterable[str], aggfunc: str = "first") -> Any:
     """Return the latest non-null metric value from a statement table.
 
     Some providers may omit specific fields on the newest disclosure date.
@@ -190,7 +190,7 @@ def _latest_non_null_from_statement(df: pd.DataFrame, aliases: Iterable[str]) ->
     if local_df.empty:
         return None
 
-    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc="first").sort_index()
+    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc=aggfunc).sort_index()
     for date in reversed(pivot_df.index):
         row = pivot_df.loc[date].to_dict()
         row["date"] = date
@@ -206,7 +206,7 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
 
     income_latest = _latest_statement_row(raw_data.get("income_statement", pd.DataFrame()))
     balance_latest = _latest_statement_row(raw_data.get("balance_sheet", pd.DataFrame()))
-    cashflow_latest = _latest_statement_row(raw_data.get("cashflow_statement", pd.DataFrame()))
+    cashflow_latest = _latest_statement_row(raw_data.get("cashflow_statement", pd.DataFrame()), aggfunc="sum")
 
     roe_value = _first_non_null(
         income_latest,
@@ -306,6 +306,9 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
         "營運活動現金流量",
         "Net cash flows from operating activities",
         "CashFlowsFromOperatingActivities",
+        "CashProvidedByOperatingActivities",
+        "OperatingCashFlow",
+        "NetCashFromOperatingActivities",
         "NetCashInflowFromOperatingActivities",
     ]
     investing_aliases = [
@@ -315,6 +318,9 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
         "取得不動產、廠房及設備",
         "Net cash flows from investing activities",
         "CashFlowsFromInvestingActivities",
+        "CashProvidedByInvestingActivities",
+        "InvestingCashFlow",
+        "NetCashFromInvestingActivities",
         "NetCashInflowFromInvestingActivities",
         "NetCashFlowsFromUsedInInvestingActivities",
         "NetCashFlowsUsedInInvestingActivities",
@@ -326,9 +332,9 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
     # Fallback: If latest statement date misses these fields, look back to the
     # nearest prior period with available values.
     if operating_cf is None:
-        operating_cf = _to_float(_latest_non_null_from_statement(cashflow_df, operating_aliases))
+        operating_cf = _to_float(_latest_non_null_from_statement(cashflow_df, operating_aliases, aggfunc="sum"))
     if investing_cf is None:
-        investing_cf = _to_float(_latest_non_null_from_statement(cashflow_df, investing_aliases))
+        investing_cf = _to_float(_latest_non_null_from_statement(cashflow_df, investing_aliases, aggfunc="sum"))
 
     if investing_cf is None:
         capex_value = _to_float(
