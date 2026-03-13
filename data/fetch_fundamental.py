@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
+
+import pandas as pd
+import requests
+
+FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
+CACHE_DIR = Path(__file__).resolve().parent / "cache"
+FUNDAMENTAL_TTL_DAYS = 90
+
+
+def _request_finmind(dataset: str, stock_id: str, timeout: int = 10) -> pd.DataFrame:
+    params = {
+        "dataset": dataset,
+        "data_id": stock_id,
+        "start_date": "2018-01-01",
+        "end_date": datetime.today().strftime("%Y-%m-%d"),
+    }
+    try:
+        response = requests.get(FINMIND_API_URL, params=params, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        records = payload.get("data", []) if isinstance(payload, dict) else []
+        return pd.DataFrame(records) if records else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _fetch_from_api(stock_id: str) -> Dict[str, Any]:
+    return {
+        "stock_id": stock_id,
+        "source": "finmind",
+        "updated_at": datetime.today().strftime("%Y-%m-%d"),
+        "income_statement": _request_finmind("TaiwanStockFinancialStatements", stock_id).to_dict(orient="records"),
+        "balance_sheet": _request_finmind("TaiwanStockBalanceSheet", stock_id).to_dict(orient="records"),
+        "cashflow_statement": _request_finmind("TaiwanStockCashFlowsStatement", stock_id).to_dict(orient="records"),
+    }
+
+
+def _is_stale(payload: Dict[str, Any]) -> bool:
+    updated_at = payload.get("updated_at")
+    if not updated_at:
+        return True
+    try:
+        updated = datetime.strptime(updated_at, "%Y-%m-%d").date()
+    except ValueError:
+        return True
+    return (datetime.today().date() - updated).days >= FUNDAMENTAL_TTL_DAYS
+
+
+def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, Any]:
+    """Get fundamental data from cache first, refresh every 90 days."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = CACHE_DIR / f"{stock_id}_fundamental.json"
+
+    if cache_file.exists() and not force_refresh:
+        try:
+            payload = json.loads(cache_file.read_text(encoding="utf-8"))
+            if not _is_stale(payload):
+                return payload
+        except json.JSONDecodeError:
+            pass
+
+    payload = _fetch_from_api(stock_id)
+    cache_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return payload
