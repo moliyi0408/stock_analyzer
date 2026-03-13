@@ -1,9 +1,11 @@
 import pandas as pd
 from data.data_manager import get_feature_data
 from data.data_manager import get_fundamental
-from data.fundamentals import prepare_fundamental_snapshot
+from data.fundamentals import prepare_fundamental_snapshot, load_income_statement_trend
 from indicators import calculate_ma
 from decision_engine import decision_engine
+from analysis.fundamental_analysis import analyze_fundamentals
+from strategy.basic_strategy import fundamental_strategy
 from logs import save_analysis_log
 
 
@@ -45,6 +47,10 @@ def main():
 
     fundamental_snapshot = prepare_fundamental_snapshot(stock_id)
 
+    income_trend_df = load_income_statement_trend(stock_id)
+    fundamental_analysis = analyze_fundamentals(income_trend_df)
+    fundamental_advice = fundamental_strategy(fundamental_analysis)
+
     # 2️⃣ 下載價量/籌碼資料（函式內會自動處理 cache）
     df = get_feature_data(stock_id, lookback_months=6, include_chip=True)
     if df is None or df.empty:
@@ -69,13 +75,13 @@ def main():
             result = {}
 
     # 5️⃣ 印出結果
-    print_analysis(stock_id, df, result, fundamental_snapshot)
+    print_analysis(stock_id, df, result, fundamental_snapshot, fundamental_analysis, fundamental_advice)
 
     # 6️⃣ 儲存分析紀錄
     save_analysis_log(stock_id=stock_id, df=df, result=result)
 
 
-def print_analysis(stock_id, df, result, fundamental_snapshot=None):
+def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_analysis=None, fundamental_advice=None):
     print("========================================📊 股票分析結果")
     print(f"股票代號：{stock_id}")
     close_price = df['Close'].iloc[-1] if 'Close' in df.columns else "N/A"
@@ -218,6 +224,22 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None):
     print(f"毛利率：{format_percent_or_na(fundamental_snapshot.get('gross_margin'))}")
     print(f"負債比率：{format_percent_or_na(fundamental_snapshot.get('debt_ratio'))}")
     print(f"自由現金流：{format_number_or_na(fundamental_snapshot.get('free_cash_flow'))}")
+
+    if isinstance(fundamental_analysis, dict) and fundamental_analysis.get("has_data"):
+        metrics = fundamental_analysis.get("metrics", {})
+
+        def fmt_ratio(value):
+            return f"{value * 100:.2f}%" if isinstance(value, (int, float)) else "N/A"
+
+        print(f"毛利率（最新）：{fmt_ratio(metrics.get('gross_margin'))}")
+        print(f"營業利益率（最新）：{fmt_ratio(metrics.get('operating_margin'))}")
+        print(f"EPS 季增率（最新）：{fmt_ratio(metrics.get('eps_change'))}")
+        print(f"EPS 季增率（近3期平均）：{fmt_ratio(metrics.get('eps_change_3p_avg'))}")
+    else:
+        print("基本面延伸指標：資料不足")
+
+    if fundamental_advice:
+        print(f"基本面策略建議：{fundamental_advice}")
 
     print("\n--- 市場摘要 ---")
     print(f"趨勢：{safe_get('trend')}")

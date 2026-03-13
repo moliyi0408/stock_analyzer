@@ -5,3 +5,4 @@ from .market_analysis import determine_trend, determine_position, determine_ma5_
 from .market_state import detect_trend
 from .market_zone import classify_market_zone
 from .overheat import market_temperature, calculate_overheat
+from .fundamental_analysis import analyze_fundamentals

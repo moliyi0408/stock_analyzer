@@ -49,6 +49,31 @@ def fetch_fundamentals(stock_id: str) -> Dict[str, Any]:
     }
 
 
+def load_income_statement_trend(stock_id: str) -> pd.DataFrame:
+    """Load income statement records and convert them into a date/type pivot table."""
+    raw_data = fetch_fundamentals(stock_id)
+    income_df = raw_data.get("income_statement", pd.DataFrame())
+    if income_df is None or income_df.empty:
+        return pd.DataFrame()
+
+    required = {"date", "type", "value"}
+    if not required.issubset(set(income_df.columns)):
+        return pd.DataFrame()
+
+    local_df = income_df.copy()
+    local_df["date"] = pd.to_datetime(local_df["date"], errors="coerce")
+    local_df = local_df.dropna(subset=["date"])
+    if local_df.empty:
+        return pd.DataFrame()
+
+    pivot_df = (
+        local_df.pivot_table(index="date", columns="type", values="value", aggfunc="first")
+        .sort_index()
+        .reset_index()
+    )
+    return pivot_df
+
+
 def _latest_statement_row(df: pd.DataFrame) -> Dict[str, Any]:
     if df is None or df.empty:
         return {}
