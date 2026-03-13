@@ -148,25 +148,47 @@ def load_income_statement_trend(stock_id: str) -> pd.DataFrame:
     return pivot_df
 
 
-def _latest_statement_row(df: pd.DataFrame, aggfunc: str = "first") -> Dict[str, Any]:
-    if df is None or df.empty:
-        return {}
+def _statement_rows_by_date(df: pd.DataFrame, aggfunc: str = "first") -> pd.DataFrame:
+    """Normalize statement data into one row per date.
+
+    Supports both long format (date/type/value) and wide format
+    (date + metric columns).
+    """
+    if df is None or df.empty or "date" not in df.columns:
+        return pd.DataFrame()
 
     local_df = df.copy()
-    if "date" not in local_df.columns or "type" not in local_df.columns or "value" not in local_df.columns:
-        return {}
-
     local_df["date"] = pd.to_datetime(local_df["date"], errors="coerce")
     local_df = local_df.dropna(subset=["date"])
     if local_df.empty:
+        return pd.DataFrame()
+
+    # Long format: one metric per row identified by `type`.
+    if {"type", "value"}.issubset(set(local_df.columns)):
+        return local_df.pivot_table(index="date", columns="type", values="value", aggfunc=aggfunc).sort_index().reset_index()
+
+    # Wide format: each metric is already a standalone column.
+    metric_cols = [col for col in local_df.columns if col != "date"]
+    if not metric_cols:
+        return pd.DataFrame()
+
+    agg_map: Dict[str, str] = {}
+    for col in metric_cols:
+        if aggfunc == "sum" and pd.api.types.is_numeric_dtype(local_df[col]):
+            agg_map[col] = "sum"
+        else:
+            agg_map[col] = "first"
+
+    return local_df.groupby("date", as_index=False).agg(agg_map).sort_values("date").reset_index(drop=True)
+
+
+def _latest_statement_row(df: pd.DataFrame, aggfunc: str = "first") -> Dict[str, Any]:
+    statement_df = _statement_rows_by_date(df, aggfunc=aggfunc)
+    if statement_df.empty:
         return {}
 
-    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc=aggfunc).sort_index().reset_index()
-    if pivot_df.empty:
-        return {}
-
-    latest = pivot_df.iloc[-1].to_dict()
-    latest["date"] = pivot_df.iloc[-1]["date"]
+    latest = statement_df.iloc[-1].to_dict()
+    latest["date"] = statement_df.iloc[-1]["date"]
     return latest
 
 
@@ -177,23 +199,12 @@ def _latest_non_null_from_statement(df: pd.DataFrame, aliases: Iterable[str], ag
     This helper scans from newest to oldest and returns the first available
     value matching the alias list.
     """
-    if df is None or df.empty:
+    statement_df = _statement_rows_by_date(df, aggfunc=aggfunc)
+    if statement_df.empty:
         return None
 
-    required = {"date", "type", "value"}
-    if not required.issubset(set(df.columns)):
-        return None
-
-    local_df = df.copy()
-    local_df["date"] = pd.to_datetime(local_df["date"], errors="coerce")
-    local_df = local_df.dropna(subset=["date"])
-    if local_df.empty:
-        return None
-
-    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc=aggfunc).sort_index()
-    for date in reversed(pivot_df.index):
-        row = pivot_df.loc[date].to_dict()
-        row["date"] = date
+    for idx in range(len(statement_df) - 1, -1, -1):
+        row = statement_df.iloc[idx].to_dict()
         value = _first_non_null(row, aliases)
         if value is not None:
             return value
