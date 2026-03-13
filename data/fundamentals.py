@@ -32,8 +32,20 @@ def _to_float(value: Any) -> float | None:
 
 def _first_non_null(data: Dict[str, Any], aliases: Iterable[str]) -> Any:
     for key in aliases:
-        if key in data and data[key] not in (None, "", pd.NA):
-            return data[key]
+        if key not in data:
+            continue
+
+        value = data[key]
+        if value is None:
+            continue
+
+        if isinstance(value, str) and value.strip() == "":
+            continue
+
+        if pd.isna(value):
+            continue
+
+        return value
     return None
 
 
