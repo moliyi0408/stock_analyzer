@@ -170,6 +170,37 @@ def _latest_statement_row(df: pd.DataFrame) -> Dict[str, Any]:
     return latest
 
 
+def _latest_non_null_from_statement(df: pd.DataFrame, aliases: Iterable[str]) -> Any:
+    """Return the latest non-null metric value from a statement table.
+
+    Some providers may omit specific fields on the newest disclosure date.
+    This helper scans from newest to oldest and returns the first available
+    value matching the alias list.
+    """
+    if df is None or df.empty:
+        return None
+
+    required = {"date", "type", "value"}
+    if not required.issubset(set(df.columns)):
+        return None
+
+    local_df = df.copy()
+    local_df["date"] = pd.to_datetime(local_df["date"], errors="coerce")
+    local_df = local_df.dropna(subset=["date"])
+    if local_df.empty:
+        return None
+
+    pivot_df = local_df.pivot_table(index="date", columns="type", values="value", aggfunc="first").sort_index()
+    for date in reversed(pivot_df.index):
+        row = pivot_df.loc[date].to_dict()
+        row["date"] = date
+        value = _first_non_null(row, aliases)
+        if value is not None:
+            return value
+
+    return None
+
+
 def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
     raw_data = fetch_fundamentals(stock_id)
 
@@ -265,38 +296,39 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
         if net_income_after_tax is not None and total_equity not in (None, 0):
             roe_value = net_income_after_tax / total_equity * 100
 
-    operating_cf = _to_float(
-        _first_non_null(
-            cashflow_latest,
-            [
-                "營業活動之淨現金流入（流出）",
-                "營業活動之淨現金流入(流出)",
-                "營業活動現金流量",
-                "營運產生之現金流入(流出)",
-                "營運活動之淨現金流入(流出)",
-                "營運活動現金流量",
-                "Net cash flows from operating activities",
-                "CashFlowsFromOperatingActivities",
-                "NetCashInflowFromOperatingActivities",
-            ],
-        )
-    )
-    investing_cf = _to_float(
-        _first_non_null(
-            cashflow_latest,
-            [
-                "投資活動之淨現金流入（流出）",
-                "投資活動之淨現金流入(流出)",
-                "投資活動現金流量",
-                "取得不動產、廠房及設備",
-                "Net cash flows from investing activities",
-                "CashFlowsFromInvestingActivities",
-                "NetCashInflowFromInvestingActivities",
-                "NetCashFlowsFromUsedInInvestingActivities",
-                "NetCashFlowsUsedInInvestingActivities",
-            ],
-        )
-    )
+    cashflow_df = raw_data.get("cashflow_statement", pd.DataFrame())
+    operating_aliases = [
+        "營業活動之淨現金流入（流出）",
+        "營業活動之淨現金流入(流出)",
+        "營業活動現金流量",
+        "營運產生之現金流入(流出)",
+        "營運活動之淨現金流入(流出)",
+        "營運活動現金流量",
+        "Net cash flows from operating activities",
+        "CashFlowsFromOperatingActivities",
+        "NetCashInflowFromOperatingActivities",
+    ]
+    investing_aliases = [
+        "投資活動之淨現金流入（流出）",
+        "投資活動之淨現金流入(流出)",
+        "投資活動現金流量",
+        "取得不動產、廠房及設備",
+        "Net cash flows from investing activities",
+        "CashFlowsFromInvestingActivities",
+        "NetCashInflowFromInvestingActivities",
+        "NetCashFlowsFromUsedInInvestingActivities",
+        "NetCashFlowsUsedInInvestingActivities",
+    ]
+
+    operating_cf = _to_float(_first_non_null(cashflow_latest, operating_aliases))
+    investing_cf = _to_float(_first_non_null(cashflow_latest, investing_aliases))
+
+    # Fallback: If latest statement date misses these fields, look back to the
+    # nearest prior period with available values.
+    if operating_cf is None:
+        operating_cf = _to_float(_latest_non_null_from_statement(cashflow_df, operating_aliases))
+    if investing_cf is None:
+        investing_cf = _to_float(_latest_non_null_from_statement(cashflow_df, investing_aliases))
 
     if investing_cf is None:
         capex_value = _to_float(
