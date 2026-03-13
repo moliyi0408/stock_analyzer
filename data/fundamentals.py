@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable
 
 import pandas as pd
@@ -31,21 +32,55 @@ def _to_float(value: Any) -> float | None:
 
 
 def _first_non_null(data: Dict[str, Any], aliases: Iterable[str]) -> Any:
+    def _is_valid(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str) and value.strip() == "":
+            return False
+        try:
+            if pd.isna(value):
+                return False
+        except TypeError:
+            pass
+        return True
+
+    def _normalize_key(key: Any) -> str:
+        text = str(key or "")
+        text = text.strip().lower()
+        text = text.replace("（", "(").replace("）", ")")
+        return re.sub(r"[^\w\u4e00-\u9fff]", "", text)
+
     for key in aliases:
         if key not in data:
             continue
 
         value = data[key]
-        if value is None:
-            continue
-
-        if isinstance(value, str) and value.strip() == "":
-            continue
-
-        if pd.isna(value):
+        if not _is_valid(value):
             continue
 
         return value
+
+    normalized_map: Dict[str, Any] = {}
+    for key, value in data.items():
+        if not _is_valid(value):
+            continue
+        normalized = _normalize_key(key)
+        if normalized and normalized not in normalized_map:
+            normalized_map[normalized] = value
+
+    normalized_aliases = [_normalize_key(alias) for alias in aliases if _normalize_key(alias)]
+
+    # Match after normalizing punctuation / casing differences first.
+    for alias in normalized_aliases:
+        if alias in normalized_map:
+            return normalized_map[alias]
+
+    # Then allow containment matches for longer provider-specific labels.
+    for alias in normalized_aliases:
+        for key, value in normalized_map.items():
+            if alias in key or key in alias:
+                return value
+
     return None
 
 
@@ -134,7 +169,18 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
 
     debt_ratio_value = _first_non_null(
         balance_latest,
-        ["負債比率", "負債比率(%)", "Debt Ratio", "debt_ratio", "DebtRatio", "liability_ratio"],
+        [
+            "負債比率",
+            "負債比率(%)",
+            "資產負債率",
+            "負債佔資產比率",
+            "Debt Ratio",
+            "debt_ratio",
+            "DebtRatio",
+            "liability_ratio",
+            "Liabilities to Assets Ratio",
+            "Debt to Asset Ratio",
+        ],
     )
 
     if gross_margin_value is None:
@@ -195,6 +241,9 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
                 "營業活動之淨現金流入（流出）",
                 "營業活動之淨現金流入(流出)",
                 "營業活動現金流量",
+                "營運產生之現金流入(流出)",
+                "營運活動之淨現金流入(流出)",
+                "營運活動現金流量",
                 "Net cash flows from operating activities",
                 "CashFlowsFromOperatingActivities",
                 "NetCashInflowFromOperatingActivities",
@@ -208,8 +257,10 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
                 "投資活動之淨現金流入（流出）",
                 "投資活動之淨現金流入(流出)",
                 "投資活動現金流量",
+                "取得不動產、廠房及設備",
                 "Net cash flows from investing activities",
                 "CashFlowsFromInvestingActivities",
+                "NetCashInflowFromInvestingActivities",
             ],
         )
     )
