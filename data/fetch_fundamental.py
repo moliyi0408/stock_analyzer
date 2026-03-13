@@ -56,14 +56,18 @@ def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, A
     """Get fundamental data from cache first, refresh every 90 days."""
     FUNDAMENTAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = FUNDAMENTAL_CACHE_DIR / f"{stock_id}_fundamental.json"
+    legacy_cache_file = FUNDAMENTAL_CACHE_DIR / f"{stock_id}.json"
 
-    if cache_file.exists() and not force_refresh:
-        try:
-            payload = json.loads(cache_file.read_text(encoding="utf-8"))
-            if not _is_stale(payload):
-                return payload
-        except json.JSONDecodeError:
-            pass
+    if not force_refresh:
+        for candidate in (cache_file, legacy_cache_file):
+            if not candidate.exists():
+                continue
+            try:
+                payload = json.loads(candidate.read_text(encoding="utf-8"))
+                if not _is_stale(payload):
+                    return payload
+            except json.JSONDecodeError:
+                continue
 
     payload = _fetch_from_api(stock_id)
     cache_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
