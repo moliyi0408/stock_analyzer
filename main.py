@@ -1,6 +1,7 @@
 import pandas as pd
 from data.data_manager import get_feature_data
 from data.data_manager import get_fundamental
+from data.fundamentals import prepare_fundamental_snapshot
 from indicators import calculate_ma
 from decision_engine import decision_engine
 from logs import save_analysis_log
@@ -42,6 +43,8 @@ def main():
     ):
         print(f"⚠ {stock_id} 基本面資料空，請檢查 API 或 cache")
 
+    fundamental_snapshot = prepare_fundamental_snapshot(stock_id)
+
     # 2️⃣ 下載價量/籌碼資料（函式內會自動處理 cache）
     df = get_feature_data(stock_id, lookback_months=6, include_chip=True)
     if df is None or df.empty:
@@ -66,13 +69,13 @@ def main():
             result = {}
 
     # 5️⃣ 印出結果
-    print_analysis(stock_id, df, result)
+    print_analysis(stock_id, df, result, fundamental_snapshot)
 
     # 6️⃣ 儲存分析紀錄
     save_analysis_log(stock_id=stock_id, df=df, result=result)
 
 
-def print_analysis(stock_id, df, result):
+def print_analysis(stock_id, df, result, fundamental_snapshot=None):
     print("========================================📊 股票分析結果")
     print(f"股票代號：{stock_id}")
     close_price = df['Close'].iloc[-1] if 'Close' in df.columns else "N/A"
@@ -135,6 +138,22 @@ def print_analysis(stock_id, df, result):
             return f"{value:.2f}"
         return str(value)
 
+
+    def format_percent_or_na(value):
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}%"
+        return "N/A"
+
+    def format_number_or_na(value):
+        if isinstance(value, (int, float)):
+            return f"{value:,.0f}"
+        return "N/A"
+
+    def fundamental_payload_date(payload):
+        if isinstance(payload, dict):
+            return payload.get("fundamental_as_of")
+        return None
+
     def confidence_grade_and_action(score):
         if not isinstance(score, (int, float)):
             return "未知", "資料不足，先觀察"
@@ -188,6 +207,17 @@ def print_analysis(stock_id, df, result):
             return f"{label}：{fill*5} {low:.2f} ~ {high:.2f}"
         return f"{label}：資料不足"
 
+
+
+
+    print("\n--- 基本面摘要 ---")
+    fundamental_snapshot = fundamental_snapshot if isinstance(fundamental_snapshot, dict) else {}
+    fundamental_data_date = fundamental_snapshot.get("as_of") or fundamental_payload_date(result)
+    print(f"資料日期：{fundamental_data_date or 'N/A'}")
+    print(f"ROE：{format_percent_or_na(fundamental_snapshot.get('roe'))}")
+    print(f"毛利率：{format_percent_or_na(fundamental_snapshot.get('gross_margin'))}")
+    print(f"負債比率：{format_percent_or_na(fundamental_snapshot.get('debt_ratio'))}")
+    print(f"自由現金流：{format_number_or_na(fundamental_snapshot.get('free_cash_flow'))}")
 
     print("\n--- 市場摘要 ---")
     print(f"趨勢：{safe_get('trend')}")
