@@ -1,6 +1,6 @@
 import pandas as pd
 
-from data.loaders import prepare_full_feature_df
+from data.data_manager import get_feature_data
 from indicators import calculate_ma
 from decision_engine import decision_engine
 
@@ -119,7 +119,7 @@ class BacktestEngine:
 
 
 def run_stock_backtest(stock_id, years=5, initial_capital=1_000_000, export_path=None):
-    df = prepare_full_feature_df(stock_id, lookback_months=years * 12, include_chip=True)
+    df = get_feature_data(stock_id, lookback_months=years * 12, include_chip=True)
     if df is None or df.empty:
         raise ValueError("回測資料不足")
 

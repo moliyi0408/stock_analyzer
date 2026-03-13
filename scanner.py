@@ -1,7 +1,7 @@
 import argparse
 import pandas as pd
 
-from data.loaders import prepare_full_feature_df
+from data.data_manager import get_feature_data
 from indicators import calculate_ma
 from decision_engine import decision_engine
 
@@ -11,7 +11,7 @@ def scan_market(stock_ids, lookback_months=6, min_confidence=60, min_rr=1.5):
 
     for stock_id in stock_ids:
         try:
-            df = prepare_full_feature_df(stock_id, lookback_months=lookback_months, include_chip=True)
+            df = get_feature_data(stock_id, lookback_months=lookback_months, include_chip=True)
             if df is None or df.empty:
                 continue
             df = calculate_ma(df, handler=lambda x, ma: pd.concat([x, pd.DataFrame(ma)], axis=1))
