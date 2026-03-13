@@ -59,9 +59,14 @@ def normalize_chip_dataframe(chip_df: pd.DataFrame) -> pd.DataFrame:
     return output
 
 
-def load_chip_csv(stock_id: str, base_dir: str = "data") -> pd.DataFrame:
-    """讀取 data/chip_{stock_id}.csv 並標準化欄位。"""
+def load_chip_csv(stock_id: str, base_dir: str = "datas") -> pd.DataFrame:
+    """讀取 datas/chip_{stock_id}.csv 並標準化欄位。"""
     chip_path = Path(base_dir) / f"chip_{stock_id}.csv"
+
+    if not chip_path.exists() and base_dir == "datas":
+        legacy_path = Path("data") / f"chip_{stock_id}.csv"
+        chip_path = legacy_path if legacy_path.exists() else chip_path
+
     if not chip_path.exists():
         return pd.DataFrame(columns=STANDARD_CHIP_COLUMNS)
 
