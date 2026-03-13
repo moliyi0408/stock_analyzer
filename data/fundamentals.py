@@ -151,16 +151,54 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
             # Snapshot columns are displayed as percentage points (e.g., 23.29)
             gross_margin_value = gross_profit_value / revenue_value * 100
 
+    total_liabilities = _to_float(
+        _first_non_null(
+            balance_latest,
+            ["負債總額", "負債總計", "Total liabilities", "total_liabilities", "TotalLiabilities"],
+        )
+    )
+    total_assets = _to_float(
+        _first_non_null(balance_latest, ["資產總額", "資產總計", "Total assets", "total_assets", "TotalAssets"])
+    )
+
     if debt_ratio_value is None:
-        total_liabilities = _to_float(_first_non_null(balance_latest, ["負債總額", "負債總計", "Total liabilities", "total_liabilities"]))
-        total_assets = _to_float(_first_non_null(balance_latest, ["資產總額", "資產總計", "Total assets", "total_assets"]))
         if total_liabilities is not None and total_assets not in (None, 0):
             debt_ratio_value = total_liabilities / total_assets * 100
+
+    if roe_value is None:
+        net_income_after_tax = _to_float(
+            _first_non_null(
+                income_latest,
+                [
+                    "ProfitLoss",
+                    "本期淨利（淨損）",
+                    "本期淨利(淨損)",
+                    "NetIncome",
+                    "NetIncomeLoss",
+                    "IncomeAfterTaxes",
+                ],
+            )
+        )
+        total_equity = _to_float(
+            _first_non_null(
+                balance_latest,
+                ["權益總額", "權益總計", "TotalEquity", "Equity", "Total equity", "total_equity"],
+            )
+        )
+        if net_income_after_tax is not None and total_equity not in (None, 0):
+            roe_value = net_income_after_tax / total_equity * 100
 
     operating_cf = _to_float(
         _first_non_null(
             cashflow_latest,
-            ["營業活動之淨現金流入（流出）", "營業活動之淨現金流入(流出)", "營業活動現金流量", "Net cash flows from operating activities"],
+            [
+                "營業活動之淨現金流入（流出）",
+                "營業活動之淨現金流入(流出)",
+                "營業活動現金流量",
+                "Net cash flows from operating activities",
+                "CashFlowsFromOperatingActivities",
+                "NetCashInflowFromOperatingActivities",
+            ],
         )
     )
     investing_cf = _to_float(
