@@ -103,10 +103,41 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
     balance_latest = _latest_statement_row(raw_data.get("balance_sheet", pd.DataFrame()))
     cashflow_latest = _latest_statement_row(raw_data.get("cashflow_statement", pd.DataFrame()))
 
-    roe_value = _first_non_null(income_latest, ["ROE(%)", "權益報酬率(ROE)", "股東權益報酬率", "ROE"])
-    gross_margin_value = _first_non_null(income_latest, ["營業毛利率(%)", "毛利率(%)", "gross_margin", "Gross Margin"])
+    roe_value = _first_non_null(
+        income_latest,
+        ["ROE(%)", "權益報酬率(ROE)", "股東權益報酬率", "ROE", "ReturnOnEquity", "return_on_equity"],
+    )
+    gross_margin_value = _first_non_null(
+        income_latest,
+        [
+            "營業毛利率(%)",
+            "毛利率(%)",
+            "gross_margin",
+            "Gross Margin",
+            "GrossMargin",
+            "GrossProfitMargin",
+            "grossProfitMargin",
+        ],
+    )
 
-    debt_ratio_value = _first_non_null(balance_latest, ["負債比率", "負債比率(%)", "Debt Ratio", "debt_ratio"])
+    debt_ratio_value = _first_non_null(
+        balance_latest,
+        ["負債比率", "負債比率(%)", "Debt Ratio", "debt_ratio", "DebtRatio", "liability_ratio"],
+    )
+
+    if gross_margin_value is None:
+        gross_profit_value = _to_float(
+            _first_non_null(
+                income_latest,
+                ["GrossProfit", "營業毛利（毛損）淨額", "營業毛利", "毛利", "gross_profit"],
+            )
+        )
+        revenue_value = _to_float(
+            _first_non_null(income_latest, ["Revenue", "營業收入合計", "營業收入", "營收", "TotalRevenue", "total_revenue"])
+        )
+        if gross_profit_value is not None and revenue_value not in (None, 0):
+            # Snapshot columns are displayed as percentage points (e.g., 23.29)
+            gross_margin_value = gross_profit_value / revenue_value * 100
 
     if debt_ratio_value is None:
         total_liabilities = _to_float(_first_non_null(balance_latest, ["負債總額", "負債總計", "Total liabilities", "total_liabilities"]))
@@ -123,7 +154,13 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
     investing_cf = _to_float(
         _first_non_null(
             cashflow_latest,
-            ["投資活動之淨現金流入（流出）", "投資活動之淨現金流入(流出)", "投資活動現金流量", "Net cash flows from investing activities"],
+            [
+                "投資活動之淨現金流入（流出）",
+                "投資活動之淨現金流入(流出)",
+                "投資活動現金流量",
+                "Net cash flows from investing activities",
+                "CashFlowsFromInvestingActivities",
+            ],
         )
     )
 
