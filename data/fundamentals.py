@@ -84,6 +84,33 @@ def _first_non_null(data: Dict[str, Any], aliases: Iterable[str]) -> Any:
     return None
 
 
+def _normalize_ratio_value(value: Any) -> float | None:
+    """Normalize ratio-like values into percentage points.
+
+    Upstream providers may return the same metric either as a decimal ratio
+    (e.g. 0.2329) or percentage points (e.g. 23.29). Values that are clearly
+    out of range for ratios are treated as invalid and returned as None.
+    """
+    numeric = _to_float(value)
+    if numeric is None:
+        return None
+
+    # Decimal ratio -> percentage points.
+    if -1 <= numeric <= 1:
+        return numeric * 100
+
+    # Typical percentage points.
+    if -100 <= numeric <= 100:
+        return numeric
+
+    # Ratios slightly above 100 can exist for edge cases, but very large values
+    # almost always indicate we accidentally picked an amount field.
+    if -1000 <= numeric <= 1000:
+        return numeric
+
+    return None
+
+
 def fetch_fundamentals(stock_id: str) -> Dict[str, Any]:
     """Fetch raw fundamentals with cache-first strategy."""
     raw = fetch_fundamental(stock_id)
@@ -183,6 +210,8 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
         ],
     )
 
+    gross_margin_value = _normalize_ratio_value(gross_margin_value)
+
     if gross_margin_value is None:
         gross_profit_value = _to_float(
             _first_non_null(
@@ -206,6 +235,8 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
     total_assets = _to_float(
         _first_non_null(balance_latest, ["資產總額", "資產總計", "Total assets", "total_assets", "TotalAssets"])
     )
+
+    debt_ratio_value = _normalize_ratio_value(debt_ratio_value)
 
     if debt_ratio_value is None:
         if total_liabilities is not None and total_assets not in (None, 0):
@@ -261,9 +292,27 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
                 "Net cash flows from investing activities",
                 "CashFlowsFromInvestingActivities",
                 "NetCashInflowFromInvestingActivities",
+                "NetCashFlowsFromUsedInInvestingActivities",
+                "NetCashFlowsUsedInInvestingActivities",
             ],
         )
     )
+
+    if investing_cf is None:
+        capex_value = _to_float(
+            _first_non_null(
+                cashflow_latest,
+                [
+                    "取得不動產、廠房及設備",
+                    "AcquisitionOfPropertyPlantAndEquipment",
+                    "PurchaseOfPropertyPlantAndEquipment",
+                ],
+            )
+        )
+        # FCF = OCF + investing cash flow. If only CAPEX is available, convert
+        # it to investing cash flow by negating CAPEX outflow.
+        if capex_value is not None:
+            investing_cf = -capex_value
 
     free_cash_flow = operating_cf + investing_cf if operating_cf is not None and investing_cf is not None else None
 
@@ -271,7 +320,7 @@ def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
     as_of_dt = max([d for d in candidate_dates if pd.notna(d)], default=None)
 
     return {
-        "roe": _to_float(roe_value),
+        "roe": _normalize_ratio_value(roe_value),
         "debt_ratio": _to_float(debt_ratio_value),
         "free_cash_flow": free_cash_flow,
         "gross_margin": _to_float(gross_margin_value),
