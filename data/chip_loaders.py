@@ -3,6 +3,8 @@ from typing import Optional
 
 import pandas as pd
 
+from data.storage_paths import CHIP_CACHE_DIR
+
 
 STANDARD_CHIP_COLUMNS = [
     "Date",
@@ -37,6 +39,24 @@ def _pick_first_existing(df: pd.DataFrame, candidates: list[str]) -> Optional[st
     return None
 
 
+def _resolve_chip_path(stock_id: str) -> Path:
+    """先找新路徑 datas/chip/{stock_id}_chip.csv，再回退到舊檔名。"""
+    new_path = CHIP_CACHE_DIR / f"{stock_id}_chip.csv"
+    if new_path.exists():
+        return new_path
+
+    legacy_candidates = [
+        CHIP_CACHE_DIR / f"chip_{stock_id}.csv",
+        Path("datas") / f"chip_{stock_id}.csv",
+        Path("data") / f"chip_{stock_id}.csv",
+    ]
+    for path in legacy_candidates:
+        if path.exists():
+            return path
+
+    return new_path
+
+
 def normalize_chip_dataframe(chip_df: pd.DataFrame) -> pd.DataFrame:
     """標準化籌碼欄位，輸出統一 schema。"""
     if chip_df is None or chip_df.empty:
@@ -59,14 +79,9 @@ def normalize_chip_dataframe(chip_df: pd.DataFrame) -> pd.DataFrame:
     return output
 
 
-def load_chip_csv(stock_id: str, base_dir: str = "datas") -> pd.DataFrame:
-    """讀取 datas/chip_{stock_id}.csv 並標準化欄位。"""
-    chip_path = Path(base_dir) / f"chip_{stock_id}.csv"
-
-    if not chip_path.exists() and base_dir == "datas":
-        legacy_path = Path("data") / f"chip_{stock_id}.csv"
-        chip_path = legacy_path if legacy_path.exists() else chip_path
-
+def load_chip_csv(stock_id: str) -> pd.DataFrame:
+    """讀取 datas/chip/{stock_id}_chip.csv 並標準化欄位。"""
+    chip_path = _resolve_chip_path(stock_id)
     if not chip_path.exists():
         return pd.DataFrame(columns=STANDARD_CHIP_COLUMNS)
 

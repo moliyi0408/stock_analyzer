@@ -1,5 +1,5 @@
 import pandas as pd
-from data.loaders import prepare_full_feature_df
+from data.data_manager import get_feature_data
 from indicators import calculate_ma
 from decision_engine import decision_engine
 from logs import save_analysis_log
@@ -34,7 +34,7 @@ def main():
     stock_id = "1504"
 
     # 1️⃣ 下載資料
-    df = prepare_full_feature_df(stock_id, lookback_months=6, include_chip=True)
+    df = get_feature_data(stock_id, lookback_months=6, include_chip=True)
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")
         return
