@@ -208,6 +208,34 @@ def infer_support_resistance_from_zones(multi_zones, close):
     return support_level, resistance_level
 
 
+def infer_support_resistance_from_history(df: pd.DataFrame, close, lookback=120):
+    """
+    當區間推導不到有效支撐/壓力時，使用近期高低點估算最近的上下緣價位。
+    """
+    close = _to_float_or_none(close)
+    if close is None or df is None or df.empty:
+        return None, None
+
+    window_df = df.tail(lookback) if lookback and lookback > 0 else df
+
+    support_level = None
+    resistance_level = None
+
+    if 'Low' in window_df.columns:
+        lows = pd.to_numeric(window_df['Low'], errors='coerce').dropna()
+        below_close = lows[lows <= close]
+        if not below_close.empty:
+            support_level = _to_float_or_none(below_close.max())
+
+    if 'High' in window_df.columns:
+        highs = pd.to_numeric(window_df['High'], errors='coerce').dropna()
+        above_close = highs[highs >= close]
+        if not above_close.empty:
+            resistance_level = _to_float_or_none(above_close.min())
+
+    return support_level, resistance_level
+
+
 def build_dynamic_price_zone(level, atr, fallback_buffer=0.01):
     level = _to_float_or_none(level)
     atr = _to_float_or_none(atr)
@@ -682,12 +710,17 @@ def decision_engine(
     multi_zones = get_multi_level_support_resistance(df)
     support_level, resistance_level = get_latest_support_resistance(df)
     inferred_support, inferred_resistance = infer_support_resistance_from_zones(multi_zones, close)
+    history_support, history_resistance = infer_support_resistance_from_history(df, close)
 
     # 若主支撐明顯高於現價，代表可能已跌破；改用區間推導出的近端支撐避免誤導
     if support_level is None or (support_level is not None and support_level > close):
-        support_level = inferred_support if inferred_support is not None else support_level
+        support_level = (
+            inferred_support
+            if inferred_support is not None
+            else (history_support if history_support is not None else support_level)
+        )
     if resistance_level is None:
-        resistance_level = inferred_resistance
+        resistance_level = inferred_resistance if inferred_resistance is not None else history_resistance
     market_zone_status = classify_market_zone(close, multi_zones)
     weekly_trend = build_weekly_trend(df)
     atr_series = calc_atr(df)
