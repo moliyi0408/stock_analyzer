@@ -49,7 +49,7 @@ def main():
 
     income_trend_df = load_income_statement_trend(stock_id)
     fundamental_analysis = analyze_fundamentals(income_trend_df)
-    fundamental_advice = fundamental_strategy(fundamental_analysis)
+    fundamental_advice = fundamental_strategy(fundamental_analysis, fundamental_snapshot)
 
     # 2️⃣ 下載價量/籌碼資料（函式內會自動處理 cache）
     df = get_feature_data(stock_id, lookback_months=6, include_chip=True)
@@ -241,6 +241,8 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     if fundamental_advice:
         if isinstance(fundamental_advice, dict):
             print(f"基本面操作評等：{fundamental_advice.get('rating', 'N/A')}")
+            if 'fundamental_score' in fundamental_advice:
+                print(f"基本面量化分數：{fundamental_advice.get('fundamental_score')}/100")
             print(f"基本面建議方向：{fundamental_advice.get('action', 'N/A')}")
             print(f"基本面倉位規劃：{fundamental_advice.get('position_plan', 'N/A')}")
             print(f"基本面結論：{fundamental_advice.get('summary', 'N/A')}")
