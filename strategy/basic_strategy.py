@@ -31,9 +31,9 @@ def _score_roe(roe: float | None) -> int:
             (0.20, 100),
             (0.15, 85),
             (0.10, 70),
-            (0.05, 55),
-            (0.00, 35),
-            (-1.00, 20),
+            (0.05, 45),
+            (0.00, 20),
+            (-1.00, 10),
         ],
     )
 
@@ -71,8 +71,9 @@ def _score_eps_growth(eps_change: float | None, eps_change_avg: float | None) ->
             (0.20, 95),
             (0.10, 80),
             (0.00, 65),
-            (-0.10, 45),
-            (-1.00, 25),
+            (-0.10, 35),
+            (-0.30, 20),
+            (-1.00, 10),
         ],
     )
     avg_score = _score_by_thresholds(
@@ -81,8 +82,9 @@ def _score_eps_growth(eps_change: float | None, eps_change_avg: float | None) ->
             (0.15, 90),
             (0.05, 75),
             (0.00, 60),
-            (-0.10, 45),
-            (-1.00, 30),
+            (-0.10, 40),
+            (-0.30, 25),
+            (-1.00, 15),
         ],
     )
     return round(latest_score * 0.7 + avg_score * 0.3)
@@ -141,11 +143,11 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
         "debt_ratio": _score_debt_ratio(debt_ratio),
     }
     score = round(
-        weighted_scores["roe"] * 0.30
+        weighted_scores["roe"] * 0.35
         + weighted_scores["operating_margin"] * 0.25
         + weighted_scores["gross_margin"] * 0.15
         + weighted_scores["eps_growth"] * 0.20
-        + weighted_scores["debt_ratio"] * 0.10
+        + weighted_scores["debt_ratio"] * 0.05
     )
     rating = _score_to_rating(score)
 
@@ -164,8 +166,10 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
         reasons.append("ROE 偏低，股東資本使用效率仍待改善")
     if operating_margin is not None and operating_margin < 0.05:
         reasons.append("營運效率偏弱（營業利益率偏低）")
-    if debt_ratio is not None and debt_ratio >= 0.50:
-        reasons.append("負債比率位於中高區，需持續追蹤償債壓力")
+    if debt_ratio is not None and debt_ratio >= 0.70:
+        reasons.append("負債比率偏高，需持續追蹤償債壓力")
+    elif debt_ratio is not None and debt_ratio >= 0.30:
+        reasons.append("負債比率落在健康區間，財務結構相對穩定")
 
     if score >= 80:
         action = "偏多"
@@ -193,11 +197,11 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
         "rating": rating,
         "fundamental_score": score,
         "score_weights": {
-            "roe": 0.30,
+            "roe": 0.35,
             "operating_margin": 0.25,
             "gross_margin": 0.15,
             "eps_growth": 0.20,
-            "debt_ratio": 0.10,
+            "debt_ratio": 0.05,
         },
         "score_breakdown": weighted_scores,
         "position_plan": position_plan,
