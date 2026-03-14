@@ -572,7 +572,17 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
         stop_loss_price = None
 
     stop_loss_price = round(stop_loss_price, 2) if stop_loss_price is not None else None
-    take_profit_price = sell_high if sell_high is not None else (resistance_level if resistance_level is not None else df['Close'].iloc[-1]*1.2)
+
+    # 空頭或震盪時，優先以「近期壓力」作為停利，避免目標過遠造成 RR 失真
+    if trend != "多頭趨勢":
+        base_tp = resistance_level if resistance_level is not None else sell_high
+    else:
+        base_tp = sell_high if sell_high is not None else resistance_level
+
+    if base_tp is None and close is not None:
+        base_tp = close * 1.2
+    take_profit_price = round(base_tp, 2) if base_tp is not None else None
+
     add_targets = determine_add_targets(start_low, chip_strength)
     reduce_target = ma5
 
