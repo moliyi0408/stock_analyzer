@@ -239,7 +239,19 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
         print("基本面延伸指標：資料不足")
 
     if fundamental_advice:
-        print(f"基本面策略建議：{fundamental_advice}")
+        if isinstance(fundamental_advice, dict):
+            print(f"基本面操作評等：{fundamental_advice.get('rating', 'N/A')}")
+            print(f"基本面建議方向：{fundamental_advice.get('action', 'N/A')}")
+            print(f"基本面倉位規劃：{fundamental_advice.get('position_plan', 'N/A')}")
+            print(f"基本面結論：{fundamental_advice.get('summary', 'N/A')}")
+            reasons = fundamental_advice.get('reasons', [])
+            if reasons:
+                print(f"基本面理由：{'；'.join(str(r) for r in reasons)}")
+            risk_notes = fundamental_advice.get('risk_notes', [])
+            if risk_notes:
+                print(f"基本面風險提醒：{'；'.join(str(r) for r in risk_notes)}")
+        else:
+            print(f"基本面策略建議：{fundamental_advice}")
 
     print("\n--- 市場摘要 ---")
     print(f"趨勢：{safe_get('trend')}")
