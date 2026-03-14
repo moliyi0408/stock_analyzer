@@ -303,6 +303,7 @@ def detect_market_structure(df: pd.DataFrame, window=10):
 
 
 def build_confidence_breakdown(scorecard, patterns, heat_score, market_trend):
+    base_score = 50
     trend_part = round(((scorecard.get("trend_score") or 50) - 50) * 0.35, 2)
     volume_part = round(((scorecard.get("volume_structure_score") or 50) - 50) * 0.30, 2)
 
@@ -325,7 +326,7 @@ def build_confidence_breakdown(scorecard, patterns, heat_score, market_trend):
     chip_part = round(((scorecard.get("chip_score") or 50) - 50) * 0.20, 2)
 
     total = round(
-        50
+        base_score
         + trend_part
         + volume_part
         + candle_part
@@ -336,6 +337,7 @@ def build_confidence_breakdown(scorecard, patterns, heat_score, market_trend):
     )
 
     return {
+        "基準分": base_score,
         "趨勢權重": trend_part,
         "量價結構": volume_part,
         "K線結構": candle_part,
