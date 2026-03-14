@@ -358,7 +358,7 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     confidence_breakdown = safe_get('ai_confidence_breakdown', {})
     if isinstance(confidence_breakdown, dict) and confidence_breakdown:
         print("AI 信心組成：")
-        for key in ["趨勢權重", "量價結構", "K線結構", "市場溫度", "大盤濾網", "籌碼", "總分"]:
+        for key in ["基準分", "趨勢權重", "量價結構", "K線結構", "市場溫度", "大盤濾網", "籌碼", "總分"]:
             if key in confidence_breakdown:
                 print(f"  {key}：{confidence_breakdown.get(key)}")
 
