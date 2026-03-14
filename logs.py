@@ -31,7 +31,7 @@ def _to_json_safe(obj):
         return {str(k): _to_json_safe(v) for k, v in obj.items()}
 
     return obj
-def save_analysis_log(stock_id, df, result, base_dir="logs"):
+def save_analysis_log(stock_id, df, result, base_dir=None):
     """
     儲存單次股票分析紀錄
     logs/{stock_id}_{YYYY-MM-DD_HHMMSS}.json
@@ -40,8 +40,14 @@ def save_analysis_log(stock_id, df, result, base_dir="logs"):
         return
 
     today = datetime.now().strftime("%Y-%m-%d")
-    Path(base_dir).mkdir(exist_ok=True)
-    log_path = Path(base_dir) / f"{stock_id}.json"
+    # 預設固定寫入專案內的 logs 目錄，避免依執行位置變動
+    if base_dir is None:
+        base_dir = Path(__file__).resolve().parent / "logs"
+    else:
+        base_dir = Path(base_dir)
+
+    base_dir.mkdir(parents=True, exist_ok=True)
+    log_path = base_dir / f"{stock_id}.json"
 
     # 讀舊檔
     if log_path.exists():
