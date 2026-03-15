@@ -9,7 +9,7 @@ from indicators import calc_atr, calc_macd, calc_rsi, calculate_ma
 
 
 def _cache_path(stock_id: str) -> Path:
-    return TECHNICAL_FEATURE_CACHE_DIR / f"{stock_id}_indicators.parquet"
+    return TECHNICAL_FEATURE_CACHE_DIR / f"{stock_id}_indicators.csv"
 
 
 def _build_technical_indicators(price_df: pd.DataFrame) -> pd.DataFrame:
@@ -30,7 +30,7 @@ def build_or_load_technical_feature_cache(stock_id: str, price_df: pd.DataFrame,
     cache_path = _cache_path(stock_id)
 
     if not force_refresh and cache_path.exists():
-        cached = pd.read_parquet(cache_path)
+        cached = pd.read_csv(cache_path)
         cached["Date"] = pd.to_datetime(cached["Date"], errors="coerce")
         cached = cached.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
         return cached
@@ -40,5 +40,5 @@ def build_or_load_technical_feature_cache(stock_id: str, price_df: pd.DataFrame,
 
     technical_df = _build_technical_indicators(price_df)
     TECHNICAL_FEATURE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    technical_df.to_parquet(cache_path, index=False)
+    technical_df.to_csv(cache_path, index=False)
     return technical_df
