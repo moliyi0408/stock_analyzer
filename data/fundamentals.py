@@ -332,48 +332,34 @@ def prepare_fundamental_snapshot(stock_id: str, payload: Dict[str, Any] | None =
         "NetCashFromOperatingActivities",
         "NetCashInflowFromOperatingActivities",
     ]
-    investing_aliases = [
-        "投資活動之淨現金流入（流出）",
-        "投資活動之淨現金流入(流出)",
-        "投資活動現金流量",
+    capex_aliases = [
         "取得不動產、廠房及設備",
-        "Net cash flows from investing activities",
-        "CashFlowsFromInvestingActivities",
-        "CashProvidedByInvestingActivities",
-        "InvestingCashFlow",
-        "NetCashFromInvestingActivities",
-        "NetCashInflowFromInvestingActivities",
-        "NetCashFlowsFromUsedInInvestingActivities",
-        "NetCashFlowsUsedInInvestingActivities",
+        "AcquisitionOfPropertyPlantAndEquipment",
+        "PurchaseOfPropertyPlantAndEquipment",
+        "CapitalExpenditures",
+        "Capex",
     ]
 
     operating_cf = _to_float(_first_non_null(cashflow_latest, operating_aliases))
-    investing_cf = _to_float(_first_non_null(cashflow_latest, investing_aliases))
+    capex_cf = _to_float(_first_non_null(cashflow_latest, capex_aliases))
 
     # Fallback: If latest statement date misses these fields, look back to the
     # nearest prior period with available values.
     if operating_cf is None:
         operating_cf = _to_float(_latest_non_null_from_statement(cashflow_df, operating_aliases, aggfunc="sum"))
-    if investing_cf is None:
-        investing_cf = _to_float(_latest_non_null_from_statement(cashflow_df, investing_aliases, aggfunc="sum"))
+    if capex_cf is None:
+        capex_cf = _to_float(_latest_non_null_from_statement(cashflow_df, capex_aliases, aggfunc="sum"))
 
-    if investing_cf is None:
-        capex_value = _to_float(
-            _first_non_null(
-                cashflow_latest,
-                [
-                    "取得不動產、廠房及設備",
-                    "AcquisitionOfPropertyPlantAndEquipment",
-                    "PurchaseOfPropertyPlantAndEquipment",
-                ],
-            )
-        )
-        # FCF = OCF + investing cash flow. If only CAPEX is available, convert
-        # it to investing cash flow by negating CAPEX outflow.
-        if capex_value is not None:
-            investing_cf = -capex_value
-
-    free_cash_flow = operating_cf + investing_cf if operating_cf is not None and investing_cf is not None else None
+    # Standard FCF formula: Operating Cash Flow - Capital Expenditure.
+    # CAPEX is often represented as a negative outflow, so convert it to an
+    # absolute spending amount first to avoid sign inversion.
+    free_cash_flow = None
+    if operating_cf is not None:
+        if capex_cf is None:
+            free_cash_flow = operating_cf
+        else:
+            capex_spending = abs(capex_cf)
+            free_cash_flow = operating_cf - capex_spending
 
     candidate_dates = [income_latest.get("date"), balance_latest.get("date"), cashflow_latest.get("date")]
     as_of_dt = max([d for d in candidate_dates if pd.notna(d)], default=None)
