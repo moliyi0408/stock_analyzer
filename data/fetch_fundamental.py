@@ -42,6 +42,9 @@ def _fetch_from_api(stock_id: str) -> Dict[str, Any]:
 
 
 def _is_stale(payload: Dict[str, Any]) -> bool:
+    if not _has_core_statements(payload):
+        return True
+
     updated_at = payload.get("updated_at")
     if not updated_at:
         return True
@@ -57,7 +60,10 @@ def _has_core_statements(payload: Dict[str, Any]) -> bool:
     if not isinstance(payload, dict):
         return False
 
-    return any(payload.get(section) for section in ["income_statement", "balance_sheet", "cashflow_statement"])
+    return any(
+        isinstance(payload.get(section), list) and len(payload[section]) > 0
+        for section in ["income_statement", "balance_sheet", "cashflow_statement"]
+    )
 
 
 def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, Any]:
@@ -80,5 +86,6 @@ def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, A
                 continue
 
     payload = _fetch_from_api(stock_id)
-    cache_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    if _has_core_statements(payload):
+        cache_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return payload

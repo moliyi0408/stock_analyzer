@@ -90,7 +90,7 @@ def main():
     if not _has_fundamental_sections(fundamental_payload):
         print(f"⚠ {stock_id} 基本面資料仍為空，後續將以有限資料繼續分析")
 
-    fundamental_snapshot = deps["prepare_fundamental_snapshot"](stock_id)
+    fundamental_snapshot = deps["prepare_fundamental_snapshot"](stock_id, payload=fundamental_payload)
 
     income_trend_df = deps["load_income_statement_trend"](stock_id)
     fundamental_analysis = deps["analyze_fundamentals"](income_trend_df)

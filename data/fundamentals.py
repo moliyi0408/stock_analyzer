@@ -212,8 +212,18 @@ def _latest_non_null_from_statement(df: pd.DataFrame, aliases: Iterable[str], ag
     return None
 
 
-def prepare_fundamental_snapshot(stock_id: str) -> Dict[str, Any]:
-    raw_data = fetch_fundamentals(stock_id)
+def prepare_fundamental_snapshot(stock_id: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    if payload is None:
+        raw_data = fetch_fundamentals(stock_id)
+    else:
+        raw_data = {
+            "stock_id": stock_id,
+            "source": payload.get("source", "finmind") if isinstance(payload, dict) else "finmind",
+            "income_statement": pd.DataFrame((payload or {}).get("income_statement", [])),
+            "balance_sheet": pd.DataFrame((payload or {}).get("balance_sheet", [])),
+            "cashflow_statement": pd.DataFrame((payload or {}).get("cashflow_statement", [])),
+        }
+
 
     income_latest = _latest_statement_row(raw_data.get("income_statement", pd.DataFrame()))
     balance_latest = _latest_statement_row(raw_data.get("balance_sheet", pd.DataFrame()))
