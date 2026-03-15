@@ -1,7 +1,6 @@
 import pandas as pd
 
 from data.data_manager import get_feature_data
-from indicators import calculate_ma
 from decision_engine import decision_engine
 
 
@@ -57,7 +56,6 @@ class BacktestEngine:
     def run(self):
         for i in range(60, len(self.df)):
             current_data = self.df.iloc[: i + 1].copy()
-            current_data = calculate_ma(current_data, handler=lambda x, ma: pd.concat([x, pd.DataFrame(ma)], axis=1))
             row = current_data.iloc[-1]
             result = decision_engine(current_data)
 

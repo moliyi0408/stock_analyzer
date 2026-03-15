@@ -4,6 +4,7 @@ import pandas as pd
 
 from data.chip_loaders import load_chip_csv
 from data.fetch_fundamental import fetch_fundamental
+from data.feature_cache import build_or_load_technical_feature_cache
 from data.fetch_price import fetch_price
 
 
@@ -28,9 +29,13 @@ def get_feature_data(
     if price_df.empty:
         return pd.DataFrame()
 
-    feature_df = price_df.copy()
-    feature_df["Date"] = pd.to_datetime(feature_df["Date"], errors="coerce")
-    feature_df = feature_df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+    feature_df = build_or_load_technical_feature_cache(
+        stock_id=stock_id,
+        price_df=price_df,
+        force_refresh=force_refresh,
+    )
+    if feature_df.empty:
+        return pd.DataFrame()
 
     if include_chip:
         chip_df = load_chip_csv(stock_id)
