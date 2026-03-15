@@ -134,6 +134,7 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
     eps_change_avg = _to_float(metrics.get("eps_change_3p_avg"))
     roe = _to_float(snapshot.get("roe"))
     debt_ratio = _to_float(snapshot.get("debt_ratio"))
+    free_cash_flow = _to_float(snapshot.get("free_cash_flow"))
 
     weighted_scores = {
         "roe": _score_roe(roe),
@@ -149,6 +150,16 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
         + weighted_scores["eps_growth"] * 0.20
         + weighted_scores["debt_ratio"] * 0.05
     )
+
+    penalty = 0
+    if free_cash_flow is not None and free_cash_flow < 0:
+        penalty += 10
+    if eps_change_avg is not None and eps_change_avg < 0:
+        penalty += 8
+
+    if penalty:
+        score = max(0, score - penalty)
+
     rating = _score_to_rating(score)
 
     gross_ok = bool(signals.get("good_gross_margin"))
@@ -161,7 +172,10 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
     if op_ok:
         reasons.append("營業利益率具支撐")
     if eps_ok:
-        reasons.append("EPS 季增率為正，獲利動能延續")
+        if eps_change_avg is not None and eps_change_avg < 0:
+            reasons.append("最新 EPS 季增率為正，但近三期平均仍為負，成長動能不穩")
+        else:
+            reasons.append("EPS 季增率為正，獲利動能延續")
     if roe is not None and roe < 0.05:
         reasons.append("ROE 偏低，股東資本使用效率仍待改善")
     if operating_margin is not None and operating_margin < 0.05:
@@ -170,6 +184,9 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
         reasons.append("負債比率偏高，需持續追蹤償債壓力")
     elif debt_ratio is not None and debt_ratio >= 0.30:
         reasons.append("負債比率落在健康區間，財務結構相對穩定")
+
+    if free_cash_flow is not None and free_cash_flow < 0:
+        reasons.append("自由現金流為負，資金調度與資本支出效率需提高")
 
     if score >= 80:
         action = "偏多"
@@ -191,6 +208,11 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
         position_plan = "避免新倉"
         summary = "營運效率偏弱（ROE 與營業利益率偏低），建議保守應對"
         risk_notes = ["等待財報改善訊號再評估", "僅適合短線反彈策略"]
+
+    if eps_change_avg is not None and eps_change_avg < 0:
+        risk_notes.append("近三季 EPS 季增率平均為負，建議保守控管倉位")
+    if free_cash_flow is not None and free_cash_flow < 0:
+        risk_notes.append("自由現金流為負，需留意現金流轉弱風險")
 
     return {
         "action": action,
@@ -216,5 +238,6 @@ def fundamental_strategy(analysis_result: Dict[str, Any], snapshot: Dict[str, An
             "roe": snapshot.get("roe"),
             "debt_ratio": snapshot.get("debt_ratio"),
             "free_cash_flow": snapshot.get("free_cash_flow"),
+            "score_penalty": penalty,
         },
     }
