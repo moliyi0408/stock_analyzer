@@ -68,6 +68,12 @@ def translate_text(value):
         return [translate_text(v) for v in value]
     return value
 
+def _has_fundamental_sections(payload):
+    if not isinstance(payload, dict):
+        return False
+    return any(payload.get(section) for section in ["income_statement", "balance_sheet", "cashflow_statement"])
+
+
 def main():
     if not _check_required_dependencies():
         return
@@ -75,13 +81,14 @@ def main():
     deps = _load_runtime_dependencies()
     stock_id = "1504"
 
-    # 1️⃣ 先確保基本面快取存在（函式內會自動處理 cache -> API -> cache）
+    # 1️⃣ 先確保基本面資料可用（cache 不存在或資料空時，主動刷新一次 API）
     fundamental_payload = deps["get_fundamental"](stock_id)
-    if fundamental_payload is None or not any(
-        fundamental_payload.get(section)
-        for section in ["income_statement", "balance_sheet", "cashflow_statement"]
-    ):
-        print(f"⚠ {stock_id} 基本面資料空，請檢查 API 或 cache")
+    if not _has_fundamental_sections(fundamental_payload):
+        print(f"⚠ {stock_id} 基本面快取不存在或資料為空，嘗試從 API 重新抓取...")
+        fundamental_payload = deps["get_fundamental"](stock_id, force_refresh=True)
+
+    if not _has_fundamental_sections(fundamental_payload):
+        print(f"⚠ {stock_id} 基本面資料仍為空，後續將以有限資料繼續分析")
 
     fundamental_snapshot = deps["prepare_fundamental_snapshot"](stock_id)
 
