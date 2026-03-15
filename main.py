@@ -1,10 +1,46 @@
-from data.data_manager import get_feature_data
-from data.data_manager import get_fundamental
-from data.fundamentals import prepare_fundamental_snapshot, load_income_statement_trend
-from decision_engine import decision_engine
-from analysis.fundamental_analysis import analyze_fundamentals
-from strategy.basic_strategy import fundamental_strategy
-from logs import save_analysis_log
+import importlib.util
+
+
+def _check_required_dependencies():
+    """檢查執行分析流程所需的必要套件。"""
+    required_modules = {
+        "pandas": "pip install pandas",
+        "numpy": "pip install numpy",
+    }
+    missing = [
+        f"{name}（安裝指令：{install_hint}）"
+        for name, install_hint in required_modules.items()
+        if importlib.util.find_spec(name) is None
+    ]
+    if missing:
+        print("❌ 缺少必要套件，暫時無法執行完整股票分析流程：")
+        for item in missing:
+            print(f" - {item}")
+        print("\n這些套件是目前策略計算的核心依賴（指標、回測與資料處理都會用到）。")
+        return False
+    return True
+
+
+def _load_runtime_dependencies():
+    """延後載入重型模組，讓啟動流程可提示使用者目前進度。"""
+    print("⏳ 正在載入分析模組與 pandas，相依套件首次載入可能需要幾秒鐘...")
+    from data.data_manager import get_feature_data, get_fundamental
+    from data.fundamentals import prepare_fundamental_snapshot, load_income_statement_trend
+    from decision_engine import decision_engine
+    from analysis.fundamental_analysis import analyze_fundamentals
+    from strategy.basic_strategy import fundamental_strategy
+    from logs import save_analysis_log
+
+    return {
+        "get_feature_data": get_feature_data,
+        "get_fundamental": get_fundamental,
+        "prepare_fundamental_snapshot": prepare_fundamental_snapshot,
+        "load_income_statement_trend": load_income_statement_trend,
+        "decision_engine": decision_engine,
+        "analyze_fundamentals": analyze_fundamentals,
+        "fundamental_strategy": fundamental_strategy,
+        "save_analysis_log": save_analysis_log,
+    }
 
 
 TRANSLATIONS = {
@@ -33,31 +69,35 @@ def translate_text(value):
     return value
 
 def main():
+    if not _check_required_dependencies():
+        return
+
+    deps = _load_runtime_dependencies()
     stock_id = "1504"
 
     # 1️⃣ 先確保基本面快取存在（函式內會自動處理 cache -> API -> cache）
-    fundamental_payload = get_fundamental(stock_id)
+    fundamental_payload = deps["get_fundamental"](stock_id)
     if fundamental_payload is None or not any(
         fundamental_payload.get(section)
         for section in ["income_statement", "balance_sheet", "cashflow_statement"]
     ):
         print(f"⚠ {stock_id} 基本面資料空，請檢查 API 或 cache")
 
-    fundamental_snapshot = prepare_fundamental_snapshot(stock_id)
+    fundamental_snapshot = deps["prepare_fundamental_snapshot"](stock_id)
 
-    income_trend_df = load_income_statement_trend(stock_id)
-    fundamental_analysis = analyze_fundamentals(income_trend_df)
-    fundamental_advice = fundamental_strategy(fundamental_analysis, fundamental_snapshot)
+    income_trend_df = deps["load_income_statement_trend"](stock_id)
+    fundamental_analysis = deps["analyze_fundamentals"](income_trend_df)
+    fundamental_advice = deps["fundamental_strategy"](fundamental_analysis, fundamental_snapshot)
 
     # 2️⃣ 下載價量/籌碼資料（函式內會自動處理 cache）
-    df = get_feature_data(stock_id, lookback_months=6, include_chip=True)
+    df = deps["get_feature_data"](stock_id, lookback_months=6, include_chip=True)
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")
         return
 
     # 3️⃣ 呼叫決策引擎
     try:
-        result = decision_engine(df=df, chip_strength=5)
+        result = deps["decision_engine"](df=df, chip_strength=5)
     except Exception as e:
             latest_snapshot = {}
             for col in ['Close', 'MA5', 'MA20', 'MA60']:
@@ -73,7 +113,7 @@ def main():
     print_analysis(stock_id, df, result, fundamental_snapshot, fundamental_analysis, fundamental_advice)
 
     # 5️⃣ 儲存分析紀錄
-    save_analysis_log(stock_id=stock_id, df=df, result=result)
+    deps["save_analysis_log"](stock_id=stock_id, df=df, result=result)
 
 
 def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_analysis=None, fundamental_advice=None):
