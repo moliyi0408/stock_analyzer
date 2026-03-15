@@ -1,8 +1,6 @@
-import pandas as pd
 from data.data_manager import get_feature_data
 from data.data_manager import get_fundamental
 from data.fundamentals import prepare_fundamental_snapshot, load_income_statement_trend
-from indicators import calculate_ma
 from decision_engine import decision_engine
 from analysis.fundamental_analysis import analyze_fundamentals
 from strategy.basic_strategy import fundamental_strategy
@@ -57,10 +55,7 @@ def main():
         print("⚠ 無法取得資料，程式終止")
         return
 
-    # 3️⃣ 計算均線 
-    df = calculate_ma(df, handler=lambda df, ma: pd.concat([df, pd.DataFrame(ma)], axis=1))
-
-    # 4️⃣ 呼叫決策引擎
+    # 3️⃣ 呼叫決策引擎
     try:
         result = decision_engine(df=df, chip_strength=5)
     except Exception as e:
@@ -74,10 +69,10 @@ def main():
             print(f"⚠ 最新資料快照: {latest_snapshot}")
             result = {}
 
-    # 5️⃣ 印出結果
+    # 4️⃣ 印出結果
     print_analysis(stock_id, df, result, fundamental_snapshot, fundamental_analysis, fundamental_advice)
 
-    # 6️⃣ 儲存分析紀錄
+    # 5️⃣ 儲存分析紀錄
     save_analysis_log(stock_id=stock_id, df=df, result=result)
 
 

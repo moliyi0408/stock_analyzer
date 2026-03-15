@@ -1,12 +1,33 @@
+import argparse
+
 from backtest import run_stock_backtest
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="回測入口")
+    parser.add_argument("--stock-id", default="1504", help="股票代號")
+    parser.add_argument("--years", type=int, default=5, help="回測年數")
+    parser.add_argument("--initial-capital", type=float, default=1_000_000, help="初始資金")
+    parser.add_argument("--strategy", default="basic", help="策略名稱（目前支援: basic）")
+    return parser.parse_args()
+
+
 def main():
-    stock_id = "1504"
-    export_path = f"logs/backtest_trades_{stock_id}.csv"
-    result = run_stock_backtest(stock_id=stock_id, years=5, initial_capital=1_000_000, export_path=export_path)
+    args = parse_args()
+    if args.strategy != "basic":
+        raise ValueError(f"尚未支援策略: {args.strategy}，目前僅支援 basic")
+
+    stock_id = args.stock_id
+    export_path = f"logs/backtest_trades_{stock_id}_{args.strategy}.csv"
+    result = run_stock_backtest(
+        stock_id=stock_id,
+        years=args.years,
+        initial_capital=args.initial_capital,
+        export_path=export_path,
+    )
 
     print("策略回測")
+    print(f"策略：{args.strategy}")
     print(f"股票：{stock_id}")
     print(f"勝率：{result['win_rate']}%")
     print(f"平均報酬：{result['avg_return']}%")
