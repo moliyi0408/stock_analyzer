@@ -52,6 +52,14 @@ def _is_stale(payload: Dict[str, Any]) -> bool:
     return (datetime.today().date() - updated).days >= FUNDAMENTAL_TTL_DAYS
 
 
+def _has_core_statements(payload: Dict[str, Any]) -> bool:
+    """Check whether at least one fundamental statement has usable records."""
+    if not isinstance(payload, dict):
+        return False
+
+    return any(payload.get(section) for section in ["income_statement", "balance_sheet", "cashflow_statement"])
+
+
 def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, Any]:
     """Get fundamental data from cache first, refresh every 90 days."""
     FUNDAMENTAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -64,7 +72,9 @@ def fetch_fundamental(stock_id: str, force_refresh: bool = False) -> Dict[str, A
                 continue
             try:
                 payload = json.loads(candidate.read_text(encoding="utf-8"))
-                if not _is_stale(payload):
+                # Empty payloads are often produced by transient API issues and
+                # should not be trusted for the full TTL window.
+                if not _is_stale(payload) and _has_core_statements(payload):
                     return payload
             except json.JSONDecodeError:
                 continue
