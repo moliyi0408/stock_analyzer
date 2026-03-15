@@ -1,0 +1,8 @@
+{
+  "initial_capital": 1000000,
+  "risk_pct": 0.02,
+  "min_score_entry": 72,
+  "max_score_exit": 50,
+  "required_trend": "多頭趨勢",
+  "require_rr_pass": true
+}

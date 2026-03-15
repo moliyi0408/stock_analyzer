@@ -2,14 +2,16 @@ import pandas as pd
 
 from data.data_manager import get_feature_data
 from decision_engine import decision_engine
+from .config import BacktestConfig
 
 
 class BacktestEngine:
-    def __init__(self, df, initial_capital=1_000_000, risk_pct=0.02):
+    def __init__(self, df, config=None):
         self.df = df.sort_values('Date').reset_index(drop=True)
-        self.initial_capital = float(initial_capital)
-        self.risk_pct = risk_pct
-        self.cash = float(initial_capital)
+        self.config = config if isinstance(config, BacktestConfig) else BacktestConfig()
+        self.initial_capital = float(self.config.initial_capital)
+        self.risk_pct = float(self.config.risk_pct)
+        self.cash = float(self.initial_capital)
         self.position_shares = 0.0
         self.entry_price = None
         self.stop_loss = None
@@ -53,6 +55,19 @@ class BacktestEngine:
         self.entry_price = None
         self.stop_loss = None
 
+    def _allow_entry(self, result):
+        score = result.get('final_score', 0)
+        trend = result.get('trend')
+        rr_pass = (result.get('rr_metrics') or {}).get('rr_pass', False)
+
+        if score < self.config.min_score_entry:
+            return False
+        if self.config.required_trend and trend != self.config.required_trend:
+            return False
+        if self.config.require_rr_pass and not rr_pass:
+            return False
+        return True
+
     def run(self):
         for i in range(60, len(self.df)):
             current_data = self.df.iloc[: i + 1].copy()
@@ -67,14 +82,10 @@ class BacktestEngine:
                     self._sell(close, date, "stop_loss")
                 elif result.get('take_profit') and close >= result['take_profit']:
                     self._sell(close, date, "take_profit")
-                elif result.get('final_score', 0) < 55:
+                elif result.get('final_score', 0) < self.config.max_score_exit:
                     self._sell(close, date, "signal_exit")
             else:
-                if (
-                    result.get('final_score', 0) >= 70
-                    and result.get('trend') == '多頭趨勢'
-                    and (result.get('rr_metrics') or {}).get('rr_pass', False)
-                ):
+                if self._allow_entry(result):
                     self._buy(close, result.get('stop_loss'), date)
 
             equity = self.cash + self.position_shares * close
@@ -116,12 +127,12 @@ class BacktestEngine:
         pd.DataFrame(self.trade_logs).to_csv(output_path, index=False, encoding='utf-8')
 
 
-def run_stock_backtest(stock_id, years=5, initial_capital=1_000_000, export_path=None):
+def run_stock_backtest(stock_id, years=5, config=None, export_path=None):
     df = get_feature_data(stock_id, lookback_months=years * 12, include_chip=True)
     if df is None or df.empty:
         raise ValueError("回測資料不足")
 
-    engine = BacktestEngine(df=df, initial_capital=initial_capital)
+    engine = BacktestEngine(df=df, config=config)
     result = engine.run()
     if export_path:
         engine.export_trade_logs(export_path)

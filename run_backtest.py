@@ -1,14 +1,19 @@
 import argparse
 
 from backtest import run_stock_backtest
+from backtest.config import load_backtest_config
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="回測入口")
     parser.add_argument("--stock-id", default="1504", help="股票代號")
     parser.add_argument("--years", type=int, default=5, help="回測年數")
-    parser.add_argument("--initial-capital", type=float, default=1_000_000, help="初始資金")
     parser.add_argument("--strategy", default="basic", help="策略名稱（目前支援: basic）")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="回測設定檔(JSON)，可自訂進出場分數、風險比例、趨勢條件",
+    )
     return parser.parse_args()
 
 
@@ -18,17 +23,22 @@ def main():
         raise ValueError(f"尚未支援策略: {args.strategy}，目前僅支援 basic")
 
     stock_id = args.stock_id
+    config = load_backtest_config(args.config)
     export_path = f"logs/backtest_trades_{stock_id}_{args.strategy}.csv"
     result = run_stock_backtest(
         stock_id=stock_id,
         years=args.years,
-        initial_capital=args.initial_capital,
+        config=config,
         export_path=export_path,
     )
 
     print("策略回測")
     print(f"策略：{args.strategy}")
     print(f"股票：{stock_id}")
+    print(f"設定檔：{args.config or '預設參數'}")
+    print(f"初始資金：{config.initial_capital}")
+    print(f"進場分數門檻：{config.min_score_entry}")
+    print(f"出場分數門檻：{config.max_score_exit}")
     print(f"勝率：{result['win_rate']}%")
     print(f"平均報酬：{result['avg_return']}%")
     print(f"最大回撤：{result['max_drawdown']}%")
