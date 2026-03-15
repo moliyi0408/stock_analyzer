@@ -1,0 +1,1 @@
+{"stock_id": "1504", "generated_at": "2026-03-15", "snapshot": {"roe": 1.1698236074708628, "debt_ratio": 31.964007854754307, "free_cash_flow": 1328673000.0, "gross_margin": 23.28928875688834, "as_of": "2025-12-31", "source": "finmind"}, "gate": {"passed": false, "checks": {"roe": false, "debt_ratio": true, "gross_margin": true, "free_cash_flow": true}}}
