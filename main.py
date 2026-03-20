@@ -249,6 +249,33 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
             second_target = round(take_profit, 2)
         return f"第一目標：{first_target}；第二目標：{second_target}（可分批獲利）"
 
+    def format_exit_plan(exit_plan):
+        if not isinstance(exit_plan, dict) or not exit_plan.get("enabled"):
+            return ["資料不足，無法建立三段式出場計畫"]
+
+        lines = [
+            f"模式：{exit_plan.get('mode_label', '平衡型')}",
+            f"T1：{format_price(exit_plan.get('t1_price'))}（先賣 {int(exit_plan.get('first_take_profit_pct', 0) * 100)}%）",
+            f"T2：{format_price(exit_plan.get('t2_price'))}（再賣 {int(exit_plan.get('second_take_profit_pct', 0) * 100)}%）",
+            f"T3：保留 {int(exit_plan.get('runner_pct', 0) * 100)}% 給趨勢單",
+            f"停損：初始 {format_price(exit_plan.get('initial_stop_loss'))} / 啟動後 {format_price(exit_plan.get('active_stop_loss'))}",
+        ]
+
+        primary = exit_plan.get("primary_trailing", {})
+        atr_trailing = exit_plan.get("atr_trailing", {})
+        lines.append(
+            f"移動止盈：跌破 {primary.get('mode', 'MA5')} {format_price(primary.get('value'))} 出場"
+        )
+        lines.append(
+            f"ATR 追蹤：高點回撤 > {atr_trailing.get('multiple', 'N/A')} ATR "
+            f"（參考價 {format_price(atr_trailing.get('trail_price'))}）"
+        )
+
+        actions = exit_plan.get("actions", [])
+        if actions:
+            lines.append(f"目前動作：{', '.join(actions)}")
+        return lines
+
     def build_zone_bar(label, zone, fill="█"):
         if isinstance(zone, list) and len(zone) == 2:
             low, high = sorted(zone)
@@ -368,6 +395,9 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     take_profit = safe_get('take_profit')
     with_explanation("停利參考價", take_profit, "接近此區可分批獲利了結，避免回吐")
     print(f"  ↳ 白話：{build_take_profit_targets(close_price, take_profit, safe_get('resistance_zone'))}")
+    print("--- 出場策略 ---")
+    for line in format_exit_plan(safe_get('exit_plan', {})):
+        print(line)
     sizing = safe_get('position_sizing', {})
     if isinstance(sizing, dict) and sizing:
         suggested_value = sizing.get('suggested_position_value')

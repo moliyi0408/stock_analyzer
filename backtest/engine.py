@@ -2,6 +2,7 @@ import pandas as pd
 
 from data.data_manager import get_feature_data
 from decision_engine import decision_engine
+from strategy.exit import evaluate_exit_signal
 from .config import BacktestConfig
 
 
@@ -13,8 +14,12 @@ class BacktestEngine:
         self.risk_pct = float(self.config.risk_pct)
         self.cash = float(self.initial_capital)
         self.position_shares = 0.0
+        self.initial_position_shares = 0.0
         self.entry_price = None
         self.stop_loss = None
+        self.highest_price = None
+        self.took_first_profit = False
+        self.took_second_profit = False
         self.trade_logs = []
         self.equity_curve = []
 
@@ -31,8 +36,12 @@ class BacktestEngine:
         cost = shares * price
         self.cash -= cost
         self.position_shares = shares
+        self.initial_position_shares = shares
         self.entry_price = price
         self.stop_loss = stop_loss
+        self.highest_price = price
+        self.took_first_profit = False
+        self.took_second_profit = False
         self.trade_logs.append({"date": date, "action": "BUY", "price": price, "shares": shares})
 
     def _sell(self, price, date, reason):
@@ -52,8 +61,43 @@ class BacktestEngine:
             }
         )
         self.position_shares = 0
+        self.initial_position_shares = 0
         self.entry_price = None
         self.stop_loss = None
+        self.highest_price = None
+        self.took_first_profit = False
+        self.took_second_profit = False
+
+    def _sell_partial(self, price, date, fraction_of_initial, reason):
+        if self.position_shares <= 0 or fraction_of_initial <= 0:
+            return
+        sell_shares = min(self.position_shares, self.initial_position_shares * fraction_of_initial)
+        if sell_shares <= 0:
+            return
+
+        proceeds = sell_shares * price
+        pnl_pct = (price - self.entry_price) / self.entry_price if self.entry_price else 0
+        self.cash += proceeds
+        self.position_shares -= sell_shares
+        self.trade_logs.append(
+            {
+                "date": date,
+                "action": "SELL_PARTIAL",
+                "price": price,
+                "shares": sell_shares,
+                "remaining_shares": self.position_shares,
+                "pnl_pct": pnl_pct,
+                "reason": reason,
+            }
+        )
+        if self.position_shares <= 0:
+            self.position_shares = 0
+            self.initial_position_shares = 0
+            self.entry_price = None
+            self.stop_loss = None
+            self.highest_price = None
+            self.took_first_profit = False
+            self.took_second_profit = False
 
     def _allow_entry(self, result):
         score = result.get('final_score', 0)
@@ -78,11 +122,52 @@ class BacktestEngine:
             date = row['Date']
 
             if self.position_shares > 0:
-                if self.stop_loss and close <= self.stop_loss:
-                    self._sell(close, date, "stop_loss")
-                elif result.get('take_profit') and close >= result['take_profit']:
-                    self._sell(close, date, "take_profit")
-                elif result.get('final_score', 0) < self.config.max_score_exit:
+                high = float(row['High']) if 'High' in row and pd.notna(row['High']) else close
+                self.highest_price = max(self.highest_price or close, high)
+
+                exit_eval = evaluate_exit_signal(
+                    current_price=close,
+                    entry_price=self.entry_price,
+                    stop_loss_price=self.stop_loss,
+                    highest_price=self.highest_price,
+                    atr=result.get('atr'),
+                    ma5=current_data['MA5'].iloc[-1] if 'MA5' in current_data.columns else None,
+                    ema20=current_data['MA20'].iloc[-1] if 'MA20' in current_data.columns else None,
+                    trend=result.get('trend'),
+                    final_score=result.get('final_score'),
+                    has_taken_first_profit=self.took_first_profit,
+                    has_taken_second_profit=self.took_second_profit,
+                )
+
+                for action in exit_eval.get("actions", []):
+                    if action.get("type") == "partial_exit":
+                        reason = action.get("reason", "partial_exit")
+                        if reason == "t1_hit" and not self.took_first_profit:
+                            self._sell_partial(
+                                close,
+                                date,
+                                action.get("fraction_of_initial", 0.5),
+                                reason,
+                            )
+                            self.took_first_profit = True
+                        elif reason == "t2_hit" and not self.took_second_profit:
+                            self._sell_partial(
+                                close,
+                                date,
+                                action.get("fraction_of_initial", 0.3),
+                                reason,
+                            )
+                            self.took_second_profit = True
+                    elif action.get("type") == "update_stop_loss":
+                        self.stop_loss = action.get("stop_loss", self.stop_loss)
+
+                if self.position_shares > 0 and any(a.get("type") == "exit_all" for a in exit_eval.get("actions", [])):
+                    reason = next(
+                        (a.get("reason") for a in exit_eval.get("actions", []) if a.get("type") == "exit_all"),
+                        "exit_signal",
+                    )
+                    self._sell(close, date, reason)
+                elif self.position_shares > 0 and result.get('final_score', 0) < self.config.max_score_exit:
                     self._sell(close, date, "signal_exit")
             else:
                 if self._allow_entry(result):
