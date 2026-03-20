@@ -273,13 +273,17 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
         if not isinstance(exit_plan, dict) or not exit_plan.get("enabled"):
             return ["資料不足，無法建立三段式出場計畫"]
 
-        lines = [
+        lines = []
+        if exit_plan.get("summary"):
+            lines.append(f"摘要：{exit_plan.get('summary')}")
+
+        lines.extend([
             f"模式：{exit_plan.get('mode_label', '平衡型')}",
             f"T1：{format_price(exit_plan.get('t1_price'))}（先賣 {int(exit_plan.get('first_take_profit_pct', 0) * 100)}%）",
             f"T2：{format_price(exit_plan.get('t2_price'))}（再賣 {int(exit_plan.get('second_take_profit_pct', 0) * 100)}%）",
             f"T3：保留 {int(exit_plan.get('runner_pct', 0) * 100)}% 給趨勢單",
             f"停損：初始 {format_price(exit_plan.get('initial_stop_loss'))} / 啟動後 {format_price(exit_plan.get('active_stop_loss'))}",
-        ]
+        ])
 
         primary = exit_plan.get("primary_trailing", {})
         atr_trailing = exit_plan.get("atr_trailing", {})
@@ -367,6 +371,9 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     print(f"籌碼分數：{safe_get('chip_score', 0)}")
     print(f"籌碼訊號：{translate_text(safe_get('chip_signals', {}))}")
     print(f"持有者策略：{safe_get('hold_advice')}")
+    holding_stop_warning = safe_get('holding_stop_warning')
+    if holding_stop_warning:
+        print(f"持倉風控提醒：⚠️ {holding_stop_warning}")
     print(f"空手者策略：{safe_get('entry_advice')}")
     buy_reco = safe_get('buy_recommendation', {})
     if isinstance(buy_reco, dict) and buy_reco:

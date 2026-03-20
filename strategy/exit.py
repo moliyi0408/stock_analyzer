@@ -94,12 +94,24 @@ def build_exit_plan(
         }
 
     risk = round(entry_price - stop_loss_price, 2)
+    risk_warning = None
     if risk <= 0:
-        return {
-            "enabled": False,
-            "summary": "停損高於或等於成本，無法計算有效風險單位",
-            "actions": [],
-        }
+        fallback_risk = None
+        if atr is not None and atr > 0:
+            fallback_risk = round(atr, 2)
+            risk_warning = "停損高於或等於成本，已改用 ATR 作為風險單位估算出場目標"
+        elif entry_price > 0:
+            fallback_risk = round(entry_price * 0.02, 2)
+            risk_warning = "停損高於或等於成本，已改用成本 2% 作為風險單位估算出場目標"
+
+        if fallback_risk is None or fallback_risk <= 0:
+            return {
+                "enabled": False,
+                "summary": "停損高於或等於成本，且無可用替代風險單位",
+                "actions": [],
+            }
+
+        risk = fallback_risk
 
     current_price = current_price if current_price is not None else entry_price
     highest_price = highest_price if highest_price is not None else current_price
@@ -144,10 +156,11 @@ def build_exit_plan(
 
     return {
         "enabled": True,
-        "summary": "先鎖利潤，再用均線/ATR 追蹤趨勢",
+        "summary": risk_warning or "先鎖利潤，再用均線/ATR 追蹤趨勢",
         "mode": profile["mode"],
         "mode_label": profile["label"],
         "risk_per_share": risk,
+        "risk_warning": risk_warning,
         "entry_price": round(entry_price, 2),
         "initial_stop_loss": round(stop_loss_price, 2),
         "active_stop_loss": active_stop,
