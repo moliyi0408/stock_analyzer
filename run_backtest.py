@@ -37,6 +37,7 @@ def main():
     print(f"股票：{stock_id}")
     print(f"設定檔：{args.config or '預設參數'}")
     print(f"初始資金：{config.initial_capital}")
+    print(f"單筆風險比例：{config.risk_pct}")
     print(f"進場分數門檻：{config.min_score_entry}")
     print(f"出場分數門檻：{config.max_score_exit}")
     print(f"進場執行模式：{config.entry_execution_mode}")
@@ -52,7 +53,13 @@ def main():
         action = trade.get("action")
         price = trade.get("price")
         pnl_pct = trade.get("pnl_pct")
-        if pnl_pct is None:
+        if action == "BUY":
+            print(
+                f"{date} | {action} | 價格 {price} | 停損 {trade.get('stop_loss')} "
+                f"| 部位金額 {round(trade.get('position_value', 0), 2)} "
+                f"| 最大風險 {round(trade.get('estimated_max_loss', 0), 2)}"
+            )
+        elif pnl_pct is None:
             print(f"{date} | {action} | 價格 {price}")
         else:
             print(f"{date} | {action} | 價格 {price} | 報酬 {round(pnl_pct * 100, 2)}%")

@@ -295,9 +295,32 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
             f"（參考價 {format_price(atr_trailing.get('trail_price'))}）"
         )
 
+        def explain_exit_actions(actions):
+            explanations = []
+            for action in actions:
+                if action == "hold_before_t1":
+                    explanations.append("尚未到第一停利目標，先續抱觀察；若跌破停損或風控線再處理")
+                elif action.startswith("sell_") and "%" in action:
+                    pct = action.replace("sell_", "")
+                    explanations.append(f"已觸發分批停利訊號，可先賣出 {pct} 鎖定部分利潤")
+                elif action == "move_stop_to_break_even":
+                    explanations.append("第一段停利後，停損可上移到成本附近，避免獲利回吐")
+                elif action == "leave_runner_for_trend":
+                    explanations.append("保留剩餘部位讓趨勢延伸，但要持續用移動停利保護")
+                elif action == "exit_all (stop loss)":
+                    explanations.append("已跌破停損，代表原先判斷失效，應優先出場控管風險")
+                elif "ATR trailing" in action:
+                    explanations.append("價格自高點回落過大，代表趨勢轉弱，可考慮全數出場")
+                elif "break" in action:
+                    explanations.append("已跌破移動停利依據的均線，代表短線走勢轉弱，可考慮出場")
+            return explanations
+
         actions = exit_plan.get("actions", [])
         if actions:
             lines.append(f"目前動作：{', '.join(actions)}")
+            friendly_actions = explain_exit_actions(actions)
+            if friendly_actions:
+                lines.append(f"  ↳ 白話：{'；'.join(friendly_actions)}")
         return lines
 
     def build_zone_bar(label, zone, fill="█"):
@@ -424,20 +447,9 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     take_profit = safe_get('take_profit')
     with_explanation("停利參考價", take_profit, "接近此區可分批獲利了結，避免回吐")
     print(f"  ↳ 白話：{build_take_profit_targets(close_price, take_profit, safe_get('resistance_zone'))}")
-    print("--- 出場策略 ---")
+    print("\n--- 出場策略 ---")
     for line in format_exit_plan(safe_get('exit_plan', {})):
         print(line)
-    sizing = safe_get('position_sizing', {})
-    if isinstance(sizing, dict) and sizing:
-        suggested_value = sizing.get('suggested_position_value')
-        print(
-            f"建議倉位金額：{suggested_value} "
-            f"(風險比例 {sizing.get('risk_pct', 'N/A')})"
-        )
-        if all(isinstance(v, (int, float)) for v in [suggested_value, close_price, stop_loss]):
-            share_estimate = suggested_value / close_price if close_price else 0
-            max_loss = share_estimate * (close_price - stop_loss)
-            print(f"最大承受損失金額：約 {max_loss:.2f}（跌破停損時的估算虧損）")
 
     multi_signal = safe_get('multi_timeframe_signal')
     print(f"多時間框架：{multi_signal}")
