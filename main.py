@@ -206,6 +206,25 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
             return f"{value:.2f}"
         return str(value)
 
+    def strategy_signal_bucket(text):
+        if not isinstance(text, str):
+            return None
+        normalized = text.replace("⚠", "")
+        if any(keyword in normalized for keyword in ["不追高", "不追價", "保守等待", "觀望", "等待訊號"]):
+            return "wait_pullback"
+        if any(keyword in normalized for keyword in ["分批布局", "分批承接", "可分批"]):
+            return "scale_in"
+        if any(keyword in normalized for keyword in ["略過", "暫不承接", "支撐失守"]):
+            return "avoid"
+        return normalized.strip()
+
+    def describe_entry_plan(entry_advice, buy_strategy):
+        entry_text = entry_advice if isinstance(entry_advice, str) else "N/A"
+        buy_text = buy_strategy if isinstance(buy_strategy, str) else "N/A"
+        if strategy_signal_bucket(entry_text) == strategy_signal_bucket(buy_text):
+            return f"{entry_text}；買點執行採「{buy_text}」"
+        return entry_text
+
 
     def format_percent_or_na(value):
         if isinstance(value, (int, float)):
@@ -366,15 +385,6 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
                 lines.append(f"  ↳ 白話：{'；'.join(friendly_actions)}")
         return lines
 
-    def build_zone_bar(label, zone, fill="█"):
-        if isinstance(zone, list) and len(zone) == 2:
-            low, high = sorted(zone)
-            return f"{label}：{fill*5} {low:.2f} ~ {high:.2f}"
-        return f"{label}：資料不足"
-
-
-
-
     print("\n--- 基本面摘要 ---")
     fundamental_snapshot = fundamental_snapshot if isinstance(fundamental_snapshot, dict) else {}
     fundamental_data_date = fundamental_snapshot.get("as_of") or fundamental_payload_date(result)
@@ -426,6 +436,14 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     )
     print(f"行為判斷：{safe_get('behavior')}")
     print(f"行為理由：{translate_text(safe_get('behavior_reasons'))}")
+    market_structure = safe_get('market_structure', {})
+    if isinstance(market_structure, dict):
+        structure = market_structure.get('structure', 'N/A')
+        interpretation = market_structure.get('interpretation', 'N/A')
+        with_explanation("市場結構", structure, "例如 LH/LL 代表短線仍偏弱，HH/HL 代表轉強")
+        with_explanation("結構判斷", interpretation, "描述目前多空是否延續或反轉")
+    patterns = safe_get('patterns', {})
+    print(f"K 線結構：{translate_text(patterns.get('overall_bias','N/A'))} - {patterns.get('meaning','')}")
 
     print("\n--- 策略建議 ---")
     print(f"分析模式：{safe_get('analysis_mode')}")
@@ -436,7 +454,6 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     print(f"量比（當日量/20 日均量）：{safe_get('volume_ratio')}")
     print(f"籌碼分數：{safe_get('chip_score', 0)}")
     print(f"籌碼訊號：{translate_text(safe_get('chip_signals', {}))}")
-    print(f"空手者策略：{safe_get('entry_advice')}")
     buy_reco = safe_get('buy_recommendation', {})
     if isinstance(buy_reco, dict) and buy_reco:
         def _format_buy_zone_and_tiers(zone, tiers):
@@ -473,11 +490,27 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
             buy_reco.get('tiers', 'N/A'),
         )
 
-        print(f"買入策略：{buy_reco.get('strategy', 'N/A')}")
+        entry_advice = safe_get('entry_advice')
+        buy_strategy = buy_reco.get('strategy', 'N/A')
+        strategy_label = "空手者策略"
+        if strategy_signal_bucket(entry_advice) != strategy_signal_bucket(buy_strategy):
+            strategy_label = "空手者策略 vs 買入策略"
+        print(f"{strategy_label}：{describe_entry_plan(entry_advice, buy_strategy)}")
         print(f"建議買入區間：{zone_display}")
         print(f"分批買點：{tiers_display}")
         print("買入執行提醒：若跌入支撐區可分批買入，並依 ATR 與量價訊號動態調整掛單")
         print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
+    else:
+        print(f"空手者策略：{safe_get('entry_advice')}")
+    rr_metrics = safe_get('rr_metrics', {})
+    if isinstance(rr_metrics, dict) and rr_metrics:
+        rr_value = rr_metrics.get('rr')
+        print(
+            f"交易期望值 RR：{rr_value} "
+            f"(reward={rr_metrics.get('reward')}, risk={rr_metrics.get('risk')}, "
+            f"門檻={rr_metrics.get('rr_threshold')}, 通過={rr_metrics.get('rr_pass')})"
+        )
+        print(f"  ↳ 白話：{explain_rr(rr_value)}")
     atr_value = safe_get('atr')
     stop_loss = safe_get('stop_loss')
     take_profit = safe_get('take_profit')
@@ -520,47 +553,6 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     with_explanation("支撐區", safe_get('support_zone'), "回檔至此區可觀察是否止跌")
     with_explanation("壓力區", safe_get('resistance_zone'), "反彈至此區可觀察是否遇到賣壓")
     with_explanation("ATR", atr_value, explain_atr(atr_value))
-
-    print("\n--- 區間可視化（文字版）---")
-    print(build_zone_bar("支撐區", safe_get('support_zone'), fill="█"))
-    print(build_zone_bar("壓力區", safe_get('resistance_zone'), fill="█"))
-    buy_tiers = buy_reco.get('tiers', []) if isinstance(buy_reco, dict) else []
-    if isinstance(buy_tiers, list) and buy_tiers:
-        tier_text = " ▓ ".join(format_price(tier.get('price')) for tier in buy_tiers if isinstance(tier, dict))
-        if tier_text:
-            print(f"分批買點：{tier_text}")
-
-    market_structure = safe_get('market_structure', {})
-    if isinstance(market_structure, dict):
-        structure = market_structure.get('structure', 'N/A')
-        interpretation = market_structure.get('interpretation', 'N/A')
-        with_explanation("市場結構", structure, "例如 LH/LL 代表短線仍偏弱，HH/HL 代表轉強")
-        with_explanation("結構判斷", interpretation, "描述目前多空是否延續或反轉")
-
-    rr_metrics = safe_get('rr_metrics', {})
-    if isinstance(rr_metrics, dict) and rr_metrics:
-        rr_value = rr_metrics.get('rr')
-        print(
-            f"交易期望值 RR：{rr_value} "
-            f"(reward={rr_metrics.get('reward')}, risk={rr_metrics.get('risk')}, "
-            f"門檻={rr_metrics.get('rr_threshold')}, 通過={rr_metrics.get('rr_pass')})"
-        )
-        print(f"  ↳ 白話：{explain_rr(rr_value)}")
-    patterns = safe_get('patterns', {})
-    print(f"K 線結構：{translate_text(patterns.get('overall_bias','N/A'))} - {patterns.get('meaning','')}")
-        # 多空層級支撐/壓力
-    """
-    multi_zones = safe_get("multi_zones", {})
-    market_zone_status = safe_get("market_zone_status", "N/A")  # 直接取字串
-  
-    for level, zones in multi_zones.items():
-        supports = zones.get("support", [])
-        resistances = zones.get("resistance", [])
-        print(f"{level} 支撐區：{supports}")
-        print(f"{level} 壓力區：{resistances}")
-        print(f"{level} 多空判斷：{market_zone_status}")  # 直接印字串
-        print("-" * 50)
-     """
 
     print("========================================")
 
