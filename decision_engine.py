@@ -613,6 +613,36 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
     return stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice
 
 
+def adjust_holding_stop_loss(entry_price, stop_loss_price, support_level=None, atr=None):
+    """持有模式下重新校正停損，避免分析停損高於持倉成本。"""
+    entry_price = _to_float_or_none(entry_price)
+    stop_loss_price = _to_float_or_none(stop_loss_price)
+    support_level = _to_float_or_none(support_level)
+    atr = _to_float_or_none(atr)
+
+    if entry_price is None:
+        return stop_loss_price, None
+
+    if stop_loss_price is not None and stop_loss_price < entry_price:
+        return round(stop_loss_price, 2), None
+
+    fallback_candidates = []
+    if support_level is not None and support_level > 0:
+        fallback_candidates.append(round(support_level * 0.97, 2))
+    if atr is not None and atr > 0:
+        fallback_candidates.append(round(entry_price - atr * 0.8, 2))
+    fallback_candidates.append(round(entry_price * 0.97, 2))
+
+    valid_candidates = [price for price in fallback_candidates if price < entry_price and price > 0]
+    adjusted_stop = min(valid_candidates) if valid_candidates else round(entry_price * 0.97, 2)
+
+    warning = (
+        "停損高於或等於成本，已在 holding 模式改用持倉風控停損；"
+        "建議重新評估風險結構或優先減碼"
+    )
+    return adjusted_stop, warning
+
+
 
 
 def _calc_buy_streak(series: pd.Series) -> int:
@@ -810,6 +840,20 @@ def decision_engine(
             resistance_level,
             final_score
         )
+    holding_stop_warning = None
+    if holding_mode == "holding":
+        stop_loss_price, holding_stop_warning = adjust_holding_stop_loss(
+            entry_price=effective_entry_price,
+            stop_loss_price=stop_loss_price,
+            support_level=support_level,
+            atr=latest_atr,
+        )
+        if holding_stop_warning:
+            if hold_advice:
+                hold_advice = f"⚠ {holding_stop_warning}；{hold_advice}"
+            else:
+                hold_advice = f"⚠ {holding_stop_warning}"
+
     rr_metrics = calculate_rr_metrics(effective_entry_price, stop_loss_price, take_profit_price, min_rr=1.5)
     if holding_mode != "holding" and not rr_metrics["rr_pass"]:
         entry_advice = f"RR {rr_metrics.get('rr')} 低於門檻 {rr_metrics['rr_threshold']}，建議略過此次交易"
@@ -852,6 +896,7 @@ def decision_engine(
         "effective_entry_price": effective_entry_price,
         "current_price": close,
         "exit_plan": exit_plan,
+        "holding_stop_warning": holding_stop_warning,
 
         "stop_loss": stop_loss_price,
         "take_profit": take_profit_price,
