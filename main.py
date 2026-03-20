@@ -280,6 +280,19 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
         mode_label = exit_plan.get('mode_label', '平衡型')
         lines.append(f"模式：{mode_label}")
 
+        integrated_hold = exit_plan.get('integrated_hold_strategy')
+        if isinstance(integrated_hold, dict) and integrated_hold:
+            lines.append(
+                f"持有策略模式：{integrated_hold.get('label', 'N/A')}"
+                f"（代碼：{integrated_hold.get('mode', 'N/A')}）"
+            )
+            if integrated_hold.get('trigger'):
+                lines.append(f"  ↳ 適用條件：{integrated_hold.get('trigger')}")
+            if integrated_hold.get('usage'):
+                lines.append(f"  ↳ 模式用途：{integrated_hold.get('usage')}")
+            if integrated_hold.get('advice'):
+                lines.append(f"  ↳ 持股建議：{integrated_hold.get('advice')}")
+
         initial_stop = exit_plan.get('initial_stop_loss')
         active_stop = exit_plan.get('active_stop_loss')
         stop_hint = build_stop_loss_hint(close, stop_loss_reference, atr_value)
@@ -423,10 +436,6 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     print(f"量比（當日量/20 日均量）：{safe_get('volume_ratio')}")
     print(f"籌碼分數：{safe_get('chip_score', 0)}")
     print(f"籌碼訊號：{translate_text(safe_get('chip_signals', {}))}")
-    print(f"持有者策略：{safe_get('hold_advice')}")
-    holding_stop_warning = safe_get('holding_stop_warning')
-    if holding_stop_warning:
-        print(f"持倉風控提醒：⚠️ {holding_stop_warning}")
     print(f"空手者策略：{safe_get('entry_advice')}")
     buy_reco = safe_get('buy_recommendation', {})
     if isinstance(buy_reco, dict) and buy_reco:
