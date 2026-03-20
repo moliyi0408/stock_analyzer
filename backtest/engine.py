@@ -35,6 +35,7 @@ class BacktestEngine:
             return
 
         cost = shares * price
+        estimated_max_loss = shares * (price - stop_loss)
         self.cash -= cost
         self.position_shares = shares
         self.initial_position_shares = shares
@@ -44,7 +45,19 @@ class BacktestEngine:
         self.took_first_profit = False
         self.took_second_profit = False
         self.pending_entry = None
-        self.trade_logs.append({"date": date, "action": "BUY", "price": price, "shares": shares, "reason": reason})
+        self.trade_logs.append(
+            {
+                "date": date,
+                "action": "BUY",
+                "price": price,
+                "shares": shares,
+                "stop_loss": stop_loss,
+                "position_value": cost,
+                "risk_budget": risk_budget,
+                "estimated_max_loss": estimated_max_loss,
+                "reason": reason,
+            }
+        )
 
     def _sell(self, price, date, reason):
         if self.position_shares <= 0:
@@ -271,6 +284,7 @@ class BacktestEngine:
         final_equity = self.cash
         return {
             "initial_capital": self.initial_capital,
+            "risk_pct": round(self.risk_pct, 4),
             "final_equity": round(final_equity, 2),
             "total_trades": len(sells),
             "win_rate": round(win_rate, 2),
