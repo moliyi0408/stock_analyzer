@@ -4,5 +4,7 @@
   "min_score_entry": 72,
   "max_score_exit": 50,
   "required_trend": "多頭趨勢",
-  "require_rr_pass": true
+  "require_rr_pass": true,
+  "entry_execution_mode": "support_pullback",
+  "pullback_wait_days": 5
 }

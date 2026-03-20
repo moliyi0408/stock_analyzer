@@ -10,6 +10,8 @@ class BacktestConfig:
     max_score_exit: float = 55
     required_trend: str = "多頭趨勢"
     require_rr_pass: bool = True
+    entry_execution_mode: str = "next_open"
+    pullback_wait_days: int = 5
 
 
 def load_backtest_config(config_path=None):

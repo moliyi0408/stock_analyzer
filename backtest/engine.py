@@ -20,10 +20,11 @@ class BacktestEngine:
         self.highest_price = None
         self.took_first_profit = False
         self.took_second_profit = False
+        self.pending_entry = None
         self.trade_logs = []
         self.equity_curve = []
 
-    def _buy(self, price, stop_loss, date):
+    def _buy(self, price, stop_loss, date, reason="entry_signal"):
         if price is None or stop_loss is None or price <= stop_loss:
             return
         risk_budget = self.cash * self.risk_pct
@@ -42,7 +43,8 @@ class BacktestEngine:
         self.highest_price = price
         self.took_first_profit = False
         self.took_second_profit = False
-        self.trade_logs.append({"date": date, "action": "BUY", "price": price, "shares": shares})
+        self.pending_entry = None
+        self.trade_logs.append({"date": date, "action": "BUY", "price": price, "shares": shares, "reason": reason})
 
     def _sell(self, price, date, reason):
         if self.position_shares <= 0:
@@ -112,11 +114,82 @@ class BacktestEngine:
             return False
         return True
 
+    def _schedule_entry(self, row, result):
+        mode = getattr(self.config, "entry_execution_mode", "same_close")
+        stop_loss = result.get("stop_loss")
+        buy_reco = result.get("buy_recommendation") or {}
+        preferred_zone = buy_reco.get("preferred_buy_zone")
+        target_price = None
+        if isinstance(preferred_zone, list) and len(preferred_zone) == 2:
+            target_price = float(sorted(preferred_zone)[-1])
+        elif isinstance(buy_reco.get("tiers"), list) and buy_reco.get("tiers"):
+            target_price = float(buy_reco["tiers"][0]["price"])
+
+        if mode == "same_close":
+            close = float(row["Close"])
+            self._buy(close, stop_loss, row["Date"], reason="same_close_signal")
+            return
+
+        if mode == "support_pullback" and target_price is not None:
+            self.pending_entry = {
+                "mode": mode,
+                "signal_date": row["Date"],
+                "stop_loss": stop_loss,
+                "target_price": target_price,
+                "days_waited": 0,
+            }
+            return
+
+        self.pending_entry = {
+            "mode": "next_open",
+            "signal_date": row["Date"],
+            "stop_loss": stop_loss,
+            "days_waited": 0,
+        }
+
+    def _process_pending_entry(self, row):
+        if self.pending_entry is None or self.position_shares > 0:
+            return
+
+        pending = self.pending_entry
+        mode = pending.get("mode", "next_open")
+        close = float(row["Close"])
+        open_price = float(row["Open"]) if "Open" in row and pd.notna(row["Open"]) else close
+        low = float(row["Low"]) if "Low" in row and pd.notna(row["Low"]) else min(open_price, close)
+        date = row["Date"]
+
+        if mode == "next_open":
+            self._buy(open_price, pending.get("stop_loss"), date, reason="next_open_entry")
+            return
+
+        if mode == "support_pullback":
+            pending["days_waited"] = pending.get("days_waited", 0) + 1
+            target_price = pending.get("target_price")
+            if target_price is not None and low <= target_price:
+                fill_price = open_price if open_price <= target_price else target_price
+                self._buy(fill_price, pending.get("stop_loss"), date, reason="support_pullback_entry")
+                return
+            if pending["days_waited"] >= max(1, int(getattr(self.config, "pullback_wait_days", 5))):
+                self.trade_logs.append(
+                    {
+                        "date": date,
+                        "action": "ENTRY_CANCELLED",
+                        "price": target_price,
+                        "reason": "pullback_not_filled",
+                    }
+                )
+                self.pending_entry = None
+
     def run(self):
         for i in range(60, len(self.df)):
             current_data = self.df.iloc[: i + 1].copy()
             row = current_data.iloc[-1]
-            result = decision_engine(current_data)
+            self._process_pending_entry(row)
+            result = decision_engine(
+                current_data,
+                entry_price=self.entry_price,
+                holding_mode="holding" if self.position_shares > 0 else "analysis",
+            )
 
             close = float(row['Close'])
             date = row['Date']
@@ -171,7 +244,7 @@ class BacktestEngine:
                     self._sell(close, date, "signal_exit")
             else:
                 if self._allow_entry(result):
-                    self._buy(close, result.get('stop_loss'), date)
+                    self._schedule_entry(row, result)
 
             equity = self.cash + self.position_shares * close
             self.equity_curve.append({"date": date, "equity": equity})

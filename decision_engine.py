@@ -682,11 +682,19 @@ def decision_engine(
     capital=1_000_000,
     risk_pct=0.02,
     market_trend="中性",
+    entry_price=None,
+    holding_mode="analysis",
 ):
     df = safe_dataframe(df)
     close = _to_float_or_none(df['Close'].iloc[-1])
     if close is None:
         raise ValueError("最新 Close 值無效，無法分析")
+    actual_entry_price = _to_float_or_none(entry_price)
+    if holding_mode not in {"analysis", "holding", "auto"}:
+        holding_mode = "analysis"
+    if holding_mode == "auto":
+        holding_mode = "holding" if actual_entry_price is not None else "analysis"
+    effective_entry_price = actual_entry_price if actual_entry_price is not None else close
 
     # 直接從 df 取均線
     ma5 = _to_float_or_none(df['MA5'].iloc[-1]) if 'MA5' in df.columns else close
@@ -802,18 +810,18 @@ def decision_engine(
             resistance_level,
             final_score
         )
-    rr_metrics = calculate_rr_metrics(close, stop_loss_price, take_profit_price, min_rr=1.5)
-    if not rr_metrics["rr_pass"]:
+    rr_metrics = calculate_rr_metrics(effective_entry_price, stop_loss_price, take_profit_price, min_rr=1.5)
+    if holding_mode != "holding" and not rr_metrics["rr_pass"]:
         entry_advice = f"RR {rr_metrics.get('rr')} 低於門檻 {rr_metrics['rr_threshold']}，建議略過此次交易"
 
     position_size = calc_position_size(
         capital=capital,
         risk_pct=risk_pct,
-        entry_price=close,
+        entry_price=effective_entry_price,
         stop_loss_price=stop_loss_price,
     )
     exit_plan = build_exit_plan(
-        entry_price=close,
+        entry_price=effective_entry_price,
         stop_loss_price=stop_loss_price,
         current_price=close,
         highest_price=recent_high,
@@ -839,6 +847,10 @@ def decision_engine(
         "reduce_target": reduce_target,
         "entry_advice": entry_advice,
         "buy_recommendation": buy_recommendation,
+        "analysis_mode": holding_mode,
+        "actual_entry_price": actual_entry_price,
+        "effective_entry_price": effective_entry_price,
+        "current_price": close,
         "exit_plan": exit_plan,
 
         "stop_loss": stop_loss_price,
