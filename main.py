@@ -1,4 +1,5 @@
 import importlib.util
+import argparse
 
 
 def _check_required_dependencies():
@@ -74,12 +75,26 @@ def _has_fundamental_sections(payload):
     return any(payload.get(section) for section in ["income_statement", "balance_sheet", "cashflow_statement"])
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="股票分析主程式")
+    parser.add_argument("--stock-id", default="1504", help="股票代號")
+    parser.add_argument("--entry-price", type=float, default=None, help="實際持倉成本；提供後可用持倉模式分析")
+    parser.add_argument(
+        "--holding-mode",
+        choices=["analysis", "holding", "auto"],
+        default="auto",
+        help="analysis=假設現價進場，holding=使用持倉成本，auto=有 entry-price 則切換為 holding",
+    )
+    return parser.parse_args()
+
+
 def main():
     if not _check_required_dependencies():
         return
 
+    args = parse_args()
     deps = _load_runtime_dependencies()
-    stock_id = "1504"
+    stock_id = args.stock_id
 
     # 1️⃣ 先確保基本面資料可用（cache 不存在或資料空時，主動刷新一次 API）
     fundamental_payload = deps["get_fundamental"](stock_id)
@@ -104,7 +119,12 @@ def main():
 
     # 3️⃣ 呼叫決策引擎
     try:
-        result = deps["decision_engine"](df=df, chip_strength=5)
+        result = deps["decision_engine"](
+            df=df,
+            chip_strength=5,
+            entry_price=args.entry_price,
+            holding_mode=args.holding_mode,
+        )
     except Exception as e:
             latest_snapshot = {}
             for col in ['Close', 'MA5', 'MA20', 'MA60']:
@@ -338,6 +358,8 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     print(f"行為理由：{translate_text(safe_get('behavior_reasons'))}")
 
     print("\n--- 策略建議 ---")
+    print(f"分析模式：{safe_get('analysis_mode')}")
+    print(f"成本基準：{safe_get('effective_entry_price')}")
     print(f"量能狀態：{safe_get('volume_state')}")
     print(f"量價訊號：{safe_get('price_volume_signal')}")
     print(f"20 日均量：{safe_get('avg_volume_20')}")

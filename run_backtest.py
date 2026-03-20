@@ -39,6 +39,8 @@ def main():
     print(f"初始資金：{config.initial_capital}")
     print(f"進場分數門檻：{config.min_score_entry}")
     print(f"出場分數門檻：{config.max_score_exit}")
+    print(f"進場執行模式：{config.entry_execution_mode}")
+    print(f"拉回等待天數：{config.pullback_wait_days}")
     print(f"勝率：{result['win_rate']}%")
     print(f"平均報酬：{result['avg_return']}%")
     print(f"最大回撤：{result['max_drawdown']}%")
