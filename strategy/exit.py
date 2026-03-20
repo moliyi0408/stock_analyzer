@@ -75,6 +75,8 @@ def build_exit_plan(
     final_score=None,
     first_take_profit_multiple=1.2,
     second_take_profit_multiple=2.0,
+    holding_mode="analysis",
+    hold_strategy=None,
 ):
     """建立真正三段式 + 市場狀態切換的結構化出場計畫。"""
     entry_price = _to_float(entry_price)
@@ -154,11 +156,24 @@ def build_exit_plan(
     if current_price <= active_stop:
         actions.append("exit_all (stop loss)")
 
+    integrated_hold_strategy = None
+    if holding_mode == "holding" and isinstance(hold_strategy, dict):
+        integrated_hold_strategy = {
+            "mode": hold_strategy.get("mode"),
+            "label": hold_strategy.get("label"),
+            "trigger": hold_strategy.get("trigger"),
+            "usage": hold_strategy.get("usage"),
+            "advice": hold_strategy.get("advice"),
+            "holding_stop_warning": hold_strategy.get("holding_stop_warning"),
+        }
+
     return {
         "enabled": True,
         "summary": risk_warning or "先鎖利潤，再用均線/ATR 追蹤趨勢",
         "mode": profile["mode"],
         "mode_label": profile["label"],
+        "holding_mode": holding_mode,
+        "integrated_hold_strategy": integrated_hold_strategy,
         "risk_per_share": risk,
         "risk_warning": risk_warning,
         "entry_price": round(entry_price, 2),

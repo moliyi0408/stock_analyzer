@@ -559,6 +559,45 @@ def build_factor_scorecard(df, chip_df=None):
     }
 
 
+def build_hold_strategy_profile(trend, ma5_status, final_score, reduce_target, stop_loss_price):
+    reduce_target = _to_float_or_none(reduce_target)
+    stop_loss_price = _to_float_or_none(stop_loss_price)
+    profile = {
+        "mode": "observe",
+        "label": "觀察等待型",
+        "trigger": "分數介於中性區，且趨勢/均線未形成明確續抱或減碼訊號",
+        "usage": "適合訊號未完全共振時，先觀察支撐與量價是否改善",
+        "advice": "保守觀察",
+    }
+
+    if final_score >= 75 and trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
+        profile.update({
+            "mode": "trend_follow",
+            "label": "續抱趨勢型",
+            "trigger": "高分強勢股 + 多頭趨勢 + 未跌破短期均線",
+            "usage": "適合持股續抱，優先讓趨勢延伸，跌破短線均線再減碼",
+            "advice": (
+                f"續抱，跌破 5 日線減碼至 {reduce_target:.2f}"
+                if reduce_target is not None
+                else "續抱，但均線資料不足請保守"
+            ),
+        })
+    elif final_score < 60 or str(ma5_status).startswith("跌破"):
+        profile.update({
+            "mode": "risk_control",
+            "label": "風險控管型",
+            "trigger": "分數偏弱或已跌破短期均線，優先處理回檔風險",
+            "usage": "適合持股風險升高時，先看反彈減碼與停損執行",
+            "advice": (
+                f"反彈減碼，控管風險，停損點 {stop_loss_price:.2f}"
+                if stop_loss_price is not None
+                else "反彈減碼，控管風險"
+            ),
+        })
+
+    return profile
+
+
 def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, chip_strength, support_level, resistance_level, final_score=60):
     ma5 = _to_float_or_none(ma5)
     close = _to_float_or_none(df['Close'].iloc[-1])
@@ -588,17 +627,14 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
 
     add_targets = determine_add_targets(start_low, chip_strength)
     reduce_target = ma5
-
-    # 持有者策略（分數閾值驅動）
-    if final_score >= 75 and trend == "多頭趨勢" and ma5_status != "跌破（短線轉弱）":
-        hold_advice = f"續抱，跌破 5 日線減碼至 {reduce_target:.2f}" if reduce_target is not None else "續抱，但均線資料不足請保守"
-    elif final_score < 60 or ma5_status.startswith("跌破"):
-        if stop_loss_price is not None:
-            hold_advice = f"反彈減碼，控管風險，停損點 {stop_loss_price:.2f}"
-        else:
-            hold_advice = "反彈減碼，控管風險"
-    else:
-        hold_advice = "保守觀察"
+    hold_strategy = build_hold_strategy_profile(
+        trend=trend,
+        ma5_status=ma5_status,
+        final_score=final_score,
+        reduce_target=reduce_target,
+        stop_loss_price=stop_loss_price,
+    )
+    hold_advice = hold_strategy["advice"]
 
     # 空手者策略（分數閾值驅動）
     if final_score >= 75 and position == "起漲區（低風險）":
@@ -610,7 +646,7 @@ def generate_advice(df, trend, ma5_status, position, ma5, start_low, sell_high, 
     else:
         entry_advice = "不追高，等待修正"
 
-    return stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice
+    return stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice, hold_strategy
 
 
 def adjust_holding_stop_loss(entry_price, stop_loss_price, support_level=None, atr=None):
@@ -827,7 +863,7 @@ def decision_engine(
         )
 
     # 操作建議
-    stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice = generate_advice(
+    stop_loss_price, take_profit_price, add_targets, reduce_target, hold_advice, entry_advice, hold_strategy = generate_advice(
             df,
             trend,
             ma5_status,
@@ -853,6 +889,15 @@ def decision_engine(
                 hold_advice = f"⚠ {holding_stop_warning}；{hold_advice}"
             else:
                 hold_advice = f"⚠ {holding_stop_warning}"
+            hold_strategy = {
+                **(hold_strategy or {}),
+                "mode": "risk_control",
+                "label": "持倉風控型",
+                "trigger": "holding 模式下原始停損高於或等於成本，已改用持倉風控停損",
+                "usage": "適合已有持股且原停損失真時，優先以成本下方風控線管理部位",
+                "advice": hold_advice,
+                "holding_stop_warning": holding_stop_warning,
+            }
 
     rr_metrics = calculate_rr_metrics(effective_entry_price, stop_loss_price, take_profit_price, min_rr=1.5)
     if holding_mode != "holding" and not rr_metrics["rr_pass"]:
@@ -874,6 +919,8 @@ def decision_engine(
         ema20=ma20,
         trend=trend,
         final_score=final_score,
+        holding_mode=holding_mode,
+        hold_strategy=hold_strategy,
     )
 
     if market_trend == "空頭":
@@ -888,6 +935,7 @@ def decision_engine(
         "behavior": behavior,
         "behavior_reasons": behavior_reasons,
         "hold_advice": hold_advice,
+        "hold_strategy": hold_strategy,
         "reduce_target": reduce_target,
         "entry_advice": entry_advice,
         "buy_recommendation": buy_recommendation,
