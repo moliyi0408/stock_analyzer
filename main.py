@@ -269,21 +269,51 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
             second_target = round(take_profit, 2)
         return f"第一目標：{first_target}；第二目標：{second_target}（可分批獲利）"
 
-    def format_exit_plan(exit_plan):
+    def format_exit_plan(exit_plan, stop_loss_reference, take_profit_reference, close, resistance_zone, atr_value):
         if not isinstance(exit_plan, dict) or not exit_plan.get("enabled"):
-            return ["資料不足，無法建立三段式出場計畫"]
+            return ["資料不足，無法建立出場策略"]
 
         lines = []
         if exit_plan.get("summary"):
             lines.append(f"摘要：{exit_plan.get('summary')}")
 
+        mode_label = exit_plan.get('mode_label', '平衡型')
+        lines.append(f"模式：{mode_label}")
+
+        initial_stop = exit_plan.get('initial_stop_loss')
+        active_stop = exit_plan.get('active_stop_loss')
+        stop_hint = build_stop_loss_hint(close, stop_loss_reference, atr_value)
+        if initial_stop == active_stop:
+            staged_stop_note = "目前尚未進入保本/追蹤停損切換，因此三段式停損仍與初始停損一致"
+        else:
+            staged_stop_note = "代表已進入分批停利後的保本/追蹤階段，三段式停損已和原始失效停損分開"
+
+        lines.append(f"結構停損：{format_price(stop_loss_reference)}（支撐/低點失效停損）")
+        lines.append(f"  ↳ 白話：{stop_hint}")
+        lines.append(
+            f"三段式停損：初始 {format_price(initial_stop)} / 啟動後 {format_price(active_stop)}"
+            "（分批出場後改用部位管理停損）"
+        )
+        lines.append(f"  ↳ 白話：{staged_stop_note}")
+
+        tp_hint = build_take_profit_targets(close, take_profit_reference, resistance_zone)
+        lines.append(f"結構停利：{format_price(take_profit_reference)}（壓力位 / 波段目標）")
+        lines.append(f"  ↳ 白話：{tp_hint}")
         lines.extend([
-            f"模式：{exit_plan.get('mode_label', '平衡型')}",
-            f"T1：{format_price(exit_plan.get('t1_price'))}（先賣 {int(exit_plan.get('first_take_profit_pct', 0) * 100)}%）",
+            f"三段式停利：T1 {format_price(exit_plan.get('t1_price'))}（先賣 {int(exit_plan.get('first_take_profit_pct', 0) * 100)}%）",
             f"T2：{format_price(exit_plan.get('t2_price'))}（再賣 {int(exit_plan.get('second_take_profit_pct', 0) * 100)}%）",
             f"T3：保留 {int(exit_plan.get('runner_pct', 0) * 100)}% 給趨勢單",
-            f"停損：初始 {format_price(exit_plan.get('initial_stop_loss'))} / 啟動後 {format_price(exit_plan.get('active_stop_loss'))}",
         ])
+        lines.append(
+            "  ↳ 白話：三段式停利用的是 R 倍數分批出場與部位管理，目的是先落袋、再保留趨勢單，"
+            "所以價格通常會比壓力位停利更近"
+        )
+
+        if isinstance(take_profit_reference, (int, float)) and isinstance(exit_plan.get('t1_price'), (int, float)):
+            lines.append(
+                "策略差異備註：結構停利是用壓力區/波段空間估目標；三段式停利是用風險報酬比（R 倍數）"
+                "安排分批賣點，因此兩組價格不同是正常現象"
+            )
 
         primary = exit_plan.get("primary_trailing", {})
         atr_trailing = exit_plan.get("atr_trailing", {})
@@ -312,7 +342,7 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
                 elif "ATR trailing" in action:
                     explanations.append("價格自高點回落過大，代表趨勢轉弱，可考慮全數出場")
                 elif "break" in action:
-                    explanations.append("已跌破移動停利依據的均線，代表短線走勢轉弱，可考慮出場")
+                    explanations.append("已跌破移動止盈依據的均線，代表短線走勢轉弱，可考慮出場")
             return explanations
 
         actions = exit_plan.get("actions", [])
@@ -441,16 +471,17 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
         print(f"風險提醒：{buy_reco.get('risk_note', 'N/A')}")
     atr_value = safe_get('atr')
     stop_loss = safe_get('stop_loss')
-    with_explanation("停損參考價", stop_loss, "跌破此價位代表原先判斷可能失效")
-    print(f"  ↳ 白話：{build_stop_loss_hint(close_price, stop_loss, atr_value)}")
-
     take_profit = safe_get('take_profit')
-    with_explanation("停利參考價", take_profit, "接近此區可分批獲利了結，避免回吐")
-    print(f"  ↳ 白話：{build_take_profit_targets(close_price, take_profit, safe_get('resistance_zone'))}")
     print("\n--- 出場策略 ---")
-    for line in format_exit_plan(safe_get('exit_plan', {})):
+    for line in format_exit_plan(
+        safe_get('exit_plan', {}),
+        stop_loss,
+        take_profit,
+        close_price,
+        safe_get('resistance_zone'),
+        atr_value,
+    ):
         print(line)
-
     multi_signal = safe_get('multi_timeframe_signal')
     print(f"多時間框架：{multi_signal}")
     print(f"  ↳ 白話：{explain_multi_timeframe(multi_signal)}")
