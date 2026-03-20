@@ -15,6 +15,7 @@ from indicators import (
     calc_atr,
 )
 from analysis import judge_market_state, calculate_overheat, classify_market_zone
+from strategy.exit import build_exit_plan
 from strategy.position import calc_position_size
 
 
@@ -740,6 +741,7 @@ def decision_engine(
     support_zone = build_dynamic_price_zone(support_level, latest_atr)
     resistance_zone = build_dynamic_price_zone(resistance_level, latest_atr)
     market_structure = detect_market_structure(df)
+    recent_high = _to_float_or_none(df['High'].tail(20).max()) if 'High' in df.columns else close
 
     # 行為層分析
     behavior, behavior_reasons = judge_market_state(
@@ -810,6 +812,17 @@ def decision_engine(
         entry_price=close,
         stop_loss_price=stop_loss_price,
     )
+    exit_plan = build_exit_plan(
+        entry_price=close,
+        stop_loss_price=stop_loss_price,
+        current_price=close,
+        highest_price=recent_high,
+        atr=latest_atr,
+        ma5=ma5,
+        ema20=ma20,
+        trend=trend,
+        final_score=final_score,
+    )
 
     if market_trend == "空頭":
         entry_advice = f"⚠ 大盤空頭濾網啟用：{entry_advice}（建議降低倉位或觀望）"
@@ -826,6 +839,7 @@ def decision_engine(
         "reduce_target": reduce_target,
         "entry_advice": entry_advice,
         "buy_recommendation": buy_recommendation,
+        "exit_plan": exit_plan,
 
         "stop_loss": stop_loss_price,
         "take_profit": take_profit_price,
