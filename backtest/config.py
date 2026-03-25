@@ -6,9 +6,11 @@ import json
 class BacktestConfig:
     initial_capital: float = 1_000_000
     risk_pct: float = 0.02
-    min_score_entry: float = 70
+    min_score_entry: float = 30
     max_score_exit: float = 55
-    required_trend: str = "多頭趨勢"
+    #required_trend: str = "多頭趨勢"
+    required_trend: str = None
+
     require_rr_pass: bool = True
     entry_execution_mode: str = "next_open"
     entry_price_rule: str = "first_tier"

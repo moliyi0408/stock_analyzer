@@ -4,9 +4,9 @@ from data.data_manager import get_feature_data
 from decision_engine import decision_engine
 from strategy.exit import evaluate_exit_signal
 from .config import BacktestConfig
-from .entry_resolver import resolve_entry_price
+#from .entry_resolver import resolve_entry_price
 
-
+print("🔥 engine loaded")
 class BacktestEngine:
     def __init__(self, df, config=None):
         self.df = df.sort_values('Date').reset_index(drop=True)
@@ -138,47 +138,14 @@ class BacktestEngine:
             return False
         return True
 
+
     def _schedule_entry(self, row, result):
-        mode = getattr(self.config, "entry_execution_mode", "same_close")
         stop_loss = result.get("stop_loss")
-        entry_price_rule = getattr(self.config, "entry_price_rule", "first_tier")
-        target_price = resolve_entry_price(result, entry_price_rule)
+        close = float(row["Close"])
 
-        if mode == "same_close":
-            close = float(row["Close"])
-            fill_price = self._apply_slippage(close, order_type="market")
-            self._buy(fill_price, stop_loss, row["Date"], reason="same_close_signal")
-            return
+        print("🔥 強制進場:", row["Date"], close)
 
-        if mode in ("support_pullback", "limit_order") and target_price is not None:
-            self.pending_entry = {
-                "mode": "limit_order",
-                "signal_date": row["Date"],
-                "stop_loss": stop_loss,
-                "target_price": target_price,
-                "entry_price_rule": entry_price_rule,
-                "days_waited": 0,
-            }
-            return
-
-        if mode in ("support_pullback", "limit_order") and target_price is None:
-            self.trade_logs.append(
-                {
-                    "date": row["Date"],
-                    "action": "ENTRY_SKIPPED",
-                    "price": None,
-                    "reason": f"entry_price_rule_unresolved:{entry_price_rule}",
-                }
-            )
-            return
-
-        self.pending_entry = {
-            "mode": "next_open",
-            "signal_date": row["Date"],
-            "stop_loss": stop_loss,
-            "entry_price_rule": entry_price_rule,
-            "days_waited": 0,
-        }
+        self._buy(close, stop_loss, row["Date"], reason="force_entry_test")
 
     def _process_pending_entry(self, row):
         if self.pending_entry is None or self.position_shares > 0:
@@ -278,9 +245,29 @@ class BacktestEngine:
                     self._sell(close, date, reason)
                 elif self.position_shares > 0 and result.get('final_score', 0) < self.config.max_score_exit:
                     self._sell(close, date, "signal_exit")
+        # else:
+        #     if self._allow_entry(result):
+        #         self._schedule_entry(row, result)
+
+
             else:
+                # 🔥 DEBUG：看看策略到底長怎樣
+                print(
+                    "DEBUG ENTRY CHECK:",
+                    result.get("final_score"),
+                    result.get("trend"),
+                    result.get("rr_metrics"),
+                )
+
                 if self._allow_entry(result):
+                    print("✅ 觸發進場條件", row["Date"])
                     self._schedule_entry(row, result)
+                else:
+                    print("❌ 不符合進場條件", row["Date"])
+
+
+
+
 
             equity = self.cash + self.position_shares * close
             self.equity_curve.append({"date": date, "equity": equity})
@@ -317,8 +304,8 @@ class BacktestEngine:
         }
 
     def export_trade_logs(self, output_path):
-        if not self.trade_logs:
-            return
+        import os
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         pd.DataFrame(self.trade_logs).to_csv(output_path, index=False, encoding='utf-8')
 
 
@@ -332,3 +319,6 @@ def run_stock_backtest(stock_id, years=5, config=None, export_path=None):
     if export_path:
         engine.export_trade_logs(export_path)
     return result
+
+
+

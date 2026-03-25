@@ -1,0 +1,265 @@
+{
+  "2026-03-20": {
+    "close_price": 159.5,
+    "chip_score": 0,
+    "chip_signals": {
+      "foreign_buy_streak": 0,
+      "foreign_buy_streak_signal": false,
+      "price_up_margin_down": false,
+      "holder_accumulation": false
+    },
+    "scorecard": {
+      "trend_score": 55,
+      "position_score": 65,
+      "volume_structure_score": 50,
+      "chip_score": 0,
+      "risk_penalty": 0,
+      "final_score": 42.75,
+      "grade": "C",
+      "strength": "弱",
+      "weights": {
+        "trend": 0.3,
+        "position": 0.25,
+        "volume_structure": 0.2,
+        "chip": 0.25
+      },
+      "context": {
+        "trend": "盤整趨勢",
+        "position": "延伸段（趨勢續航）",
+        "volume_state": "量縮",
+        "price_volume_signal": "下跌量縮",
+        "volume_ratio": 0.40822915518247094,
+        "heat_score": 37.80149337047512,
+        "chip_signals": {
+          "foreign_buy_streak": 0,
+          "foreign_buy_streak_signal": false,
+          "price_up_margin_down": false,
+          "holder_accumulation": false
+        },
+        "chip_signal_score": 0,
+        "support_level": 150.0,
+        "resistance_level": null
+      }
+    },
+    "final_score": 42.75,
+    "score_grade": "C",
+    "score_strength": "弱",
+    "decision": {
+      "trend": "盤整趨勢",
+      "position": "延伸段（趨勢續航）",
+      "ma5_status": "跌破（短線轉弱）",
+      "market_temp": "正常",
+      "heat_score": 37.80149337047512,
+      "behavior": "震盪整理，觀察為主",
+      "behavior_reasons": [
+        "量價結構：下跌量縮，籌碼相對穩定"
+      ],
+      "hold_advice": "反彈減碼，控管風險，停損點 145.50",
+      "reduce_target": 160.0,
+      "entry_advice": "RR 0.18 低於門檻 1.5，建議略過此次交易",
+      "buy_recommendation": {
+        "strategy": "保守等待，不追價",
+        "tiers": [
+          {
+            "batch": 1,
+            "price": 147.0
+          },
+          {
+            "batch": 2,
+            "price": 141.0
+          }
+        ],
+        "risk_note": "若跌破最末買點且無法站回，建議暫停加碼並重新評估",
+        "preferred_buy_zone": [
+          141.0,
+          147.0
+        ]
+      },
+      "stop_loss": 145.5,
+      "take_profit": 162.0,
+      "patterns": {
+        "lookback_days": 5,
+        "bias_score": 0,
+        "overall_bias": "neutral",
+        "meaning": "K 線結構偏中性，等待方向",
+        "details": {
+          "doji_days": 0,
+          "long_upper_days": 0,
+          "long_lower_days": 0,
+          "xianren": false
+        }
+      },
+      "support_level": 150.0,
+      "resistance_level": 162.0,
+      "support_zone": [
+        143.75,
+        156.25
+      ],
+      "resistance_zone": [
+        155.75,
+        168.25
+      ],
+      "atr": 6.25,
+      "multi_zones": {
+        "short_term": {
+          "support": [
+            [
+              143,
+              154
+            ]
+          ],
+          "resistance": [
+            [
+              165,
+              176
+            ],
+            [
+              176,
+              187
+            ]
+          ]
+        },
+        "swing": {
+          "support": [
+            [
+              135,
+              144
+            ],
+            [
+              144,
+              153
+            ]
+          ],
+          "resistance": [
+            [
+              162,
+              171
+            ],
+            [
+              171,
+              180
+            ],
+            [
+              180,
+              189
+            ]
+          ]
+        },
+        "long_term": {
+          "support": [
+            [
+              135,
+              144
+            ],
+            [
+              144,
+              153
+            ]
+          ],
+          "resistance": [
+            [
+              162,
+              171
+            ],
+            [
+              171,
+              180
+            ],
+            [
+              180,
+              189
+            ]
+          ]
+        }
+      },
+      "market_zone_status": "中性區",
+      "market_structure": {
+        "structure": "LH / LL",
+        "interpretation": "空頭延續",
+        "higher_high": false,
+        "higher_low": false
+      },
+      "volume_state": "量縮",
+      "price_volume_signal": "下跌量縮",
+      "avg_volume_20": 5973789.4,
+      "volume_ratio": 0.40822915518247094,
+      "chip_signals": {
+        "foreign_buy_streak": 0,
+        "foreign_buy_streak_signal": false,
+        "price_up_margin_down": false,
+        "holder_accumulation": false
+      },
+      "chip_score": 0,
+      "scorecard": {
+        "trend_score": 55,
+        "position_score": 65,
+        "volume_structure_score": 50,
+        "chip_score": 0,
+        "risk_penalty": 0,
+        "final_score": 42.75,
+        "grade": "C",
+        "strength": "弱",
+        "weights": {
+          "trend": 0.3,
+          "position": 0.25,
+          "volume_structure": 0.2,
+          "chip": 0.25
+        },
+        "context": {
+          "trend": "盤整趨勢",
+          "position": "延伸段（趨勢續航）",
+          "volume_state": "量縮",
+          "price_volume_signal": "下跌量縮",
+          "volume_ratio": 0.40822915518247094,
+          "heat_score": 37.80149337047512,
+          "chip_signals": {
+            "foreign_buy_streak": 0,
+            "foreign_buy_streak_signal": false,
+            "price_up_margin_down": false,
+            "holder_accumulation": false
+          },
+          "chip_signal_score": 0,
+          "support_level": 150.0,
+          "resistance_level": null
+        }
+      },
+      "final_score": 42.75,
+      "score_grade": "C",
+      "score_strength": "弱",
+      "weekly_trend": "週K多頭",
+      "multi_timeframe_signal": "週K多頭 / 日K:盤整趨勢",
+      "indicator_resonance": {
+        "signals": [
+          "RSI偏低"
+        ],
+        "score": 1,
+        "label": "共振不足"
+      },
+      "position_sizing": {
+        "capital": 1000000,
+        "risk_pct": 0.02,
+        "suggested_position_value": 227857.14,
+        "formula": "capital × risk_pct / (entry_price - stop_loss)"
+      },
+      "market_filter": "中性",
+      "ai_confidence_score": 51.75,
+      "ai_confidence_breakdown": {
+        "基準分": 50,
+        "趨勢權重": 1.75,
+        "量價結構": 0.0,
+        "K線結構": 0,
+        "市場溫度": 0,
+        "大盤濾網": 0,
+        "籌碼": 0.0,
+        "總分": 51.75
+      },
+      "rr_metrics": {
+        "risk": 14.0,
+        "reward": 2.5,
+        "rr": 0.18,
+        "rr_threshold": 1.5,
+        "rr_pass": false
+      }
+    }
+  }
+}
