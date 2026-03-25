@@ -548,6 +548,19 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
             if key in confidence_breakdown:
                 print(f"  {key}：{confidence_breakdown.get(key)}")
 
+    mup = safe_get("mup_scorecard", {})
+    if isinstance(mup, dict) and mup:
+        print("\n--- Main Uptrend Trigger (MUP) ---")
+        print(f"結構：{mup.get('structure_level', 'N/A')}")
+        print(f"動能：{mup.get('momentum_level', 'N/A')}")
+        print(f"量能：{mup.get('volume_level', 'N/A')}")
+        print(f"籌碼：{mup.get('chip_level', 'N/A')}")
+        print(f"MUP 分數：{mup.get('score_range', 'N/A')}")
+        print(f"狀態：{mup.get('status', 'N/A')}（{mup.get('status_code', 'N/A')}）")
+        missing = mup.get("missing_conditions", [])
+        missing_text = "、".join(missing) if isinstance(missing, list) and missing else "無"
+        print(f"缺少條件：{missing_text}")
+
     with_explanation("支撐價", safe_get('support_level'), "常見買盤防守價位，跌破要提高警覺")
     with_explanation("壓力價", safe_get('resistance_level'), "常見賣壓區，接近時容易震盪")
     with_explanation("支撐區", safe_get('support_zone'), "回檔至此區可觀察是否止跌")
