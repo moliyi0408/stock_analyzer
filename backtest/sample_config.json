@@ -5,6 +5,9 @@
   "max_score_exit": 50,
   "required_trend": "多頭趨勢",
   "require_rr_pass": true,
-  "entry_execution_mode": "support_pullback",
-  "pullback_wait_days": 5
+  "entry_execution_mode": "limit_order",
+  "entry_price_rule": "mid_zone",
+  "pullback_wait_days": 5,
+  "market_slippage_bps": 5.0,
+  "limit_slippage_bps": 1.0
 }

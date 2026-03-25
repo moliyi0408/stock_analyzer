@@ -4,6 +4,7 @@ from data.data_manager import get_feature_data
 from decision_engine import decision_engine
 from strategy.exit import evaluate_exit_signal
 from .config import BacktestConfig
+from .entry_resolver import resolve_entry_price
 
 
 class BacktestEngine:
@@ -23,6 +24,16 @@ class BacktestEngine:
         self.pending_entry = None
         self.trade_logs = []
         self.equity_curve = []
+
+    def _apply_slippage(self, raw_price, order_type="market"):
+        if raw_price is None:
+            return None
+        bps = (
+            getattr(self.config, "limit_slippage_bps", 1.0)
+            if order_type == "limit"
+            else getattr(self.config, "market_slippage_bps", 5.0)
+        )
+        return round(float(raw_price) * (1 + float(bps) / 10000), 4)
 
     def _buy(self, price, stop_loss, date, reason="entry_signal"):
         if price is None or stop_loss is None or price <= stop_loss:
@@ -130,33 +141,42 @@ class BacktestEngine:
     def _schedule_entry(self, row, result):
         mode = getattr(self.config, "entry_execution_mode", "same_close")
         stop_loss = result.get("stop_loss")
-        buy_reco = result.get("buy_recommendation") or {}
-        preferred_zone = buy_reco.get("preferred_buy_zone")
-        target_price = None
-        if isinstance(preferred_zone, list) and len(preferred_zone) == 2:
-            target_price = float(sorted(preferred_zone)[-1])
-        elif isinstance(buy_reco.get("tiers"), list) and buy_reco.get("tiers"):
-            target_price = float(buy_reco["tiers"][0]["price"])
+        entry_price_rule = getattr(self.config, "entry_price_rule", "first_tier")
+        target_price = resolve_entry_price(result, entry_price_rule)
 
         if mode == "same_close":
             close = float(row["Close"])
-            self._buy(close, stop_loss, row["Date"], reason="same_close_signal")
+            fill_price = self._apply_slippage(close, order_type="market")
+            self._buy(fill_price, stop_loss, row["Date"], reason="same_close_signal")
             return
 
-        if mode == "support_pullback" and target_price is not None:
+        if mode in ("support_pullback", "limit_order") and target_price is not None:
             self.pending_entry = {
-                "mode": mode,
+                "mode": "limit_order",
                 "signal_date": row["Date"],
                 "stop_loss": stop_loss,
                 "target_price": target_price,
+                "entry_price_rule": entry_price_rule,
                 "days_waited": 0,
             }
+            return
+
+        if mode in ("support_pullback", "limit_order") and target_price is None:
+            self.trade_logs.append(
+                {
+                    "date": row["Date"],
+                    "action": "ENTRY_SKIPPED",
+                    "price": None,
+                    "reason": f"entry_price_rule_unresolved:{entry_price_rule}",
+                }
+            )
             return
 
         self.pending_entry = {
             "mode": "next_open",
             "signal_date": row["Date"],
             "stop_loss": stop_loss,
+            "entry_price_rule": entry_price_rule,
             "days_waited": 0,
         }
 
@@ -172,15 +192,18 @@ class BacktestEngine:
         date = row["Date"]
 
         if mode == "next_open":
-            self._buy(open_price, pending.get("stop_loss"), date, reason="next_open_entry")
+            fill_price = self._apply_slippage(open_price, order_type="market")
+            reason = "next_open_gap_entry" if open_price != close else "next_open_entry"
+            self._buy(fill_price, pending.get("stop_loss"), date, reason=reason)
             return
 
-        if mode == "support_pullback":
+        if mode == "limit_order":
             pending["days_waited"] = pending.get("days_waited", 0) + 1
             target_price = pending.get("target_price")
             if target_price is not None and low <= target_price:
                 fill_price = open_price if open_price <= target_price else target_price
-                self._buy(fill_price, pending.get("stop_loss"), date, reason="support_pullback_entry")
+                fill_price = self._apply_slippage(fill_price, order_type="limit")
+                self._buy(fill_price, pending.get("stop_loss"), date, reason="limit_order_filled")
                 return
             if pending["days_waited"] >= max(1, int(getattr(self.config, "pullback_wait_days", 5))):
                 self.trade_logs.append(
@@ -188,7 +211,7 @@ class BacktestEngine:
                         "date": date,
                         "action": "ENTRY_CANCELLED",
                         "price": target_price,
-                        "reason": "pullback_not_filled",
+                        "reason": "limit_order_not_filled",
                     }
                 )
                 self.pending_entry = None

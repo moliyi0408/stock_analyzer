@@ -14,6 +14,11 @@ def parse_args():
         default=None,
         help="回測設定檔(JSON)，可自訂進出場分數、風險比例、趨勢條件",
     )
+    parser.add_argument(
+        "--entry-rule",
+        default=None,
+        help="進場價格轉換規則，例如 first_tier / last_tier / mid_zone / support_level / resistance_breakout",
+    )
     return parser.parse_args()
 
 
@@ -24,6 +29,8 @@ def main():
 
     stock_id = args.stock_id
     config = load_backtest_config(args.config)
+    if args.entry_rule:
+        config.entry_price_rule = args.entry_rule
     export_path = f"logs/backtest_trades_{stock_id}_{args.strategy}.csv"
     result = run_stock_backtest(
         stock_id=stock_id,
@@ -41,7 +48,10 @@ def main():
     print(f"進場分數門檻：{config.min_score_entry}")
     print(f"出場分數門檻：{config.max_score_exit}")
     print(f"進場執行模式：{config.entry_execution_mode}")
+    print(f"進場價格規則：{config.entry_price_rule}")
     print(f"拉回等待天數：{config.pullback_wait_days}")
+    print(f"市價滑價(bps)：{config.market_slippage_bps}")
+    print(f"限價滑價(bps)：{config.limit_slippage_bps}")
     print(f"勝率：{result['win_rate']}%")
     print(f"平均報酬：{result['avg_return']}%")
     print(f"最大回撤：{result['max_drawdown']}%")

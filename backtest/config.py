@@ -11,7 +11,10 @@ class BacktestConfig:
     required_trend: str = "多頭趨勢"
     require_rr_pass: bool = True
     entry_execution_mode: str = "next_open"
+    entry_price_rule: str = "first_tier"
     pullback_wait_days: int = 5
+    market_slippage_bps: float = 5.0
+    limit_slippage_bps: float = 1.0
 
 
 def load_backtest_config(config_path=None):
