@@ -450,6 +450,144 @@ def _score_to_grade(final_score):
     return "C", "弱"
 
 
+def _mup_level(score):
+    if score >= 80:
+        return "高"
+    if score >= 60:
+        return "中"
+    return "低"
+
+
+def _mup_status(score):
+    if score >= 90:
+        return "共振啟動", "CONFIRMED"
+    if score >= 75:
+        return "準主升浪", "READY"
+    if score >= 60:
+        return "潛力觀察", "WATCHLIST"
+    return "無效", "IGNORE"
+
+
+def build_mup_scorecard(df, scorecard):
+    """把主升浪圖形訊號轉成可計算分數，輸出可讀的工程化解釋。"""
+    close = _to_float_or_none(df['Close'].iloc[-1]) if 'Close' in df.columns else None
+    ma5 = _to_float_or_none(df['MA5'].iloc[-1]) if 'MA5' in df.columns else None
+    ma20 = _to_float_or_none(df['MA20'].iloc[-1]) if 'MA20' in df.columns else None
+    ma60 = _to_float_or_none(df['MA60'].iloc[-1]) if 'MA60' in df.columns else None
+    today_open = _to_float_or_none(df['Open'].iloc[-1]) if 'Open' in df.columns else None
+    today_low = _to_float_or_none(df['Low'].iloc[-1]) if 'Low' in df.columns else None
+    yesterday_high = _to_float_or_none(df['High'].iloc[-2]) if 'High' in df.columns and len(df) >= 2 else None
+    pct_change = _to_float_or_none(df['Close'].pct_change().iloc[-1]) if len(df) >= 2 and 'Close' in df.columns else None
+    latest_volume = _to_float_or_none(df['Volume'].iloc[-1]) if 'Volume' in df.columns else None
+
+    max_120 = _to_float_or_none(df['High'].tail(120).max()) if 'High' in df.columns else None
+    min_20 = _to_float_or_none(df['Low'].tail(20).min()) if 'Low' in df.columns else None
+    max_20 = _to_float_or_none(df['High'].tail(20).max()) if 'High' in df.columns else None
+    drawdown = ((max_120 - close) / max_120) if None not in (max_120, close) and max_120 else None
+    consolidation_range = ((max_20 - min_20) / min_20) if None not in (max_20, min_20) and min_20 else None
+
+    vol_df = calc_volume_baseline(df.copy())
+    avg_volume = _to_float_or_none(vol_df["avg_volume_20"].iloc[-1]) if "avg_volume_20" in vol_df.columns else None
+    volume_ratio = (latest_volume / avg_volume) if (latest_volume is not None and avg_volume not in (None, 0)) else None
+    vol_3d = _to_float_or_none(df['Volume'].iloc[-4]) if 'Volume' in df.columns and len(df) >= 4 else None
+    vol_2d = _to_float_or_none(df['Volume'].iloc[-3]) if 'Volume' in df.columns and len(df) >= 3 else None
+    vol_1d = _to_float_or_none(df['Volume'].iloc[-2]) if 'Volume' in df.columns and len(df) >= 2 else None
+
+    is_limit_like = pct_change is not None and pct_change >= 0.095
+    gap_up = None not in (today_open, yesterday_high) and today_open > yesterday_high
+    gap_not_filled = None not in (today_low, yesterday_high) and today_low > yesterday_high
+    above_ma5 = None not in (close, ma5) and close > ma5
+
+    consecutive_up_days = 0
+    if 'Close' in df.columns and len(df) >= 2:
+        for i in range(len(df) - 1, 0, -1):
+            now = _to_float_or_none(df['Close'].iloc[i])
+            prev = _to_float_or_none(df['Close'].iloc[i - 1])
+            if None in (now, prev) or now <= prev:
+                break
+            consecutive_up_days += 1
+
+    score_structure = 0
+    if drawdown is not None and drawdown >= 0.3:
+        score_structure += 8
+    if consolidation_range is not None and consolidation_range <= 0.15:
+        score_structure += 6
+    if is_limit_like:
+        score_structure += 6
+
+    score_momentum = 0
+    if gap_up:
+        score_momentum += 7
+    if gap_not_filled:
+        score_momentum += 5
+    if consecutive_up_days >= 4:
+        score_momentum += 5
+    if above_ma5:
+        score_momentum += 3
+
+    score_volume = 0
+    if volume_ratio is not None and volume_ratio >= 2:
+        score_volume += 12
+    if None not in (vol_3d, vol_2d, vol_1d, latest_volume) and vol_3d < vol_2d < vol_1d < latest_volume:
+        score_volume += 8
+    if volume_ratio is not None and volume_ratio >= 1.5 and vol_1d is not None and avg_volume is not None and vol_1d >= avg_volume * 1.5:
+        score_volume += 5
+
+    score_chip = 0
+    chip_base = scorecard.get("chip_score") if isinstance(scorecard, dict) else None
+    trend_base = scorecard.get("trend_score") if isinstance(scorecard, dict) else None
+    position_base = scorecard.get("position_score") if isinstance(scorecard, dict) else None
+    if isinstance(chip_base, (int, float)):
+        score_chip += min(12, round(chip_base * 0.12))
+    if isinstance(trend_base, (int, float)) and trend_base >= 70:
+        score_chip += 4
+    if isinstance(position_base, (int, float)) and position_base >= 65:
+        score_chip += 4
+    score_chip = min(20, score_chip)
+
+    score_risk = 0
+    not_overextended = None not in (close, ma5) and ma5 not in (None, 0) and ((close - ma5) / ma5) < 0.1
+    if not_overextended:
+        score_risk += 5
+    if None not in (close, ma20, ma60) and close >= ma20 >= ma60:
+        score_risk += 5
+    if volume_ratio is not None and volume_ratio < 3.5:
+        score_risk += 5
+
+    total_score = score_structure + score_momentum + score_volume + score_chip + score_risk
+    total_score = max(0, min(100, round(total_score, 2)))
+    status_zh, status_code = _mup_status(total_score)
+
+    missing_conditions = []
+    if not (volume_ratio is not None and volume_ratio >= 2):
+        missing_conditions.append("放量")
+    if not (gap_up and gap_not_filled):
+        missing_conditions.append("跳空")
+    if consecutive_up_days < 4:
+        missing_conditions.append("連陽續攻")
+    if score_structure < 12:
+        missing_conditions.append("底部結構")
+    if score_chip < 12:
+        missing_conditions.append("籌碼集中")
+
+    return {
+        "structure_score": score_structure,
+        "momentum_score": score_momentum,
+        "volume_score": score_volume,
+        "chip_score": score_chip,
+        "risk_score": score_risk,
+        "total_score": total_score,
+        "score_range": f"{max(0, int(total_score - 5))}~{min(100, int(total_score + 5))}",
+        "structure_level": _mup_level(score_structure / 20 * 100 if score_structure is not None else 0),
+        "momentum_level": _mup_level(score_momentum / 20 * 100 if score_momentum is not None else 0),
+        "volume_level": _mup_level(score_volume / 25 * 100 if score_volume is not None else 0),
+        "chip_level": _mup_level(score_chip / 20 * 100 if score_chip is not None else 0),
+        "status": status_zh,
+        "status_code": status_code,
+        "missing_conditions": missing_conditions[:3],
+    }
+
+
 def build_factor_scorecard(df, chip_df=None):
     """建立多因子評分卡，輸出各子分數與總分。"""
     df = safe_dataframe(df)
@@ -851,6 +989,7 @@ def decision_engine(
         final_score = max(0, final_score - 10)
 
     confidence_breakdown = build_confidence_breakdown(scorecard, patterns, heat_score, market_trend)
+    mup_scorecard = build_mup_scorecard(df, scorecard)
 
 
     buy_recommendation = build_buy_recommendation(
@@ -980,4 +1119,5 @@ def decision_engine(
         "ai_confidence_score": round(confidence_breakdown["總分"], 2),
         "ai_confidence_breakdown": confidence_breakdown,
         "rr_metrics": rr_metrics,
+        "mup_scorecard": mup_scorecard,
     }
