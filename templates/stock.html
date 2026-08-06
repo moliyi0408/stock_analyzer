@@ -90,7 +90,7 @@
       <div class="tab-pane fade show active" id="fund">
         <div class="card"><div class="card-body">
           <h2>快取資訊</h2>
-          <p>本頁直接讀取 logs/{{ a.stock_id }}.json 的最新分析結果，不在使用者開頁時重新呼叫分析引擎。</p>
+          <p>本頁會即時呼叫共用分析流程取得最新資料；logs/{{ a.stock_id }}.json 僅作為歷史紀錄與趨勢圖來源。</p>
         </div></div>
       </div>
       <div class="tab-pane fade" id="tech">
