@@ -39,7 +39,12 @@ def save_analysis_log(stock_id, df, result, base_dir=None):
     if df is None or df.empty or not result:
         return
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    latest_data_date = pd.to_datetime(df["Date"], errors="coerce").max() if "Date" in df.columns else pd.NaT
+    record_date = (
+        latest_data_date.strftime("%Y-%m-%d")
+        if not pd.isna(latest_data_date)
+        else datetime.now().strftime("%Y-%m-%d")
+    )
     # 預設固定寫入專案內的 logs 目錄，避免依執行位置變動
     if base_dir is None:
         base_dir = Path(__file__).resolve().parent / "logs"
@@ -59,15 +64,15 @@ def save_analysis_log(stock_id, df, result, base_dir=None):
     else:
         log_data = {}
 
-    # 今天已有就不寫
-    if today in log_data:
-        print(f"ℹ️ {stock_id} {today} 已有紀錄，略過")
+    # 同一個交易資料日已有紀錄就不寫，避免系統日期晚於資料日期時誤判。
+    if record_date in log_data:
+        print(f"ℹ️ {stock_id} {record_date} 已有紀錄，略過")
         return
 
     # 使用 _to_json_safe 套用整個 result
     safe_result = _to_json_safe(result)
 
-    log_data[today] = {
+    log_data[record_date] = {
         "close_price": float(df['Close'].iloc[-1]) if 'Close' in df.columns else None,
         "chip_score": safe_result.get("chip_score") if isinstance(safe_result, dict) else None,
         "chip_signals": safe_result.get("chip_signals") if isinstance(safe_result, dict) else None,

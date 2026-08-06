@@ -117,6 +117,13 @@ def main():
         print("⚠ 無法取得資料，程式終止")
         return
 
+    # 抓完 K 線後先印最新資料，方便確認分析是否真的用到最新收盤價。
+    if "Date" in df.columns and "Close" in df.columns:
+        print("ℹ️ 最新收盤價資料尾端：")
+        print(df[["Date", "Close"]].tail())
+        print(f"ℹ️ 最新資料日期：{df['Date'].iloc[-1]}")
+        print(f"ℹ️ 最新收盤價：{df['Close'].iloc[-1]}")
+
     # 3️⃣ 呼叫決策引擎
     try:
         result = deps["decision_engine"](
