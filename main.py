@@ -117,7 +117,7 @@ def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
     )
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")
-        return
+        return None
 
     # 抓完 K 線後先印最新資料，方便確認分析是否真的用到最新收盤價。
     if "Date" in df.columns and "Close" in df.columns:
@@ -148,8 +148,17 @@ def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
     # 4️⃣ 印出結果
     print_analysis(stock_id, df, result, fundamental_snapshot, fundamental_analysis, fundamental_advice)
 
-    # 5️⃣ 儲存分析紀錄
+    # 5️⃣ 儲存分析紀錄（logs 僅作為歷史紀錄/cache，不作為當前分析資料來源）
     deps["save_analysis_log"](stock_id=stock_id, df=df, result=result)
+
+    return {
+        "stock_id": stock_id,
+        "df": df,
+        "decision": result,
+        "fundamental": fundamental_snapshot,
+        "fundamental_analysis": fundamental_analysis,
+        "fundamental_advice": fundamental_advice,
+    }
 
 
 def main():

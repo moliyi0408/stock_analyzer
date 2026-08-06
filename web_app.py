@@ -72,19 +72,14 @@ def _is_log_stale(stock_id):
     return parsed.date() < datetime.today().date()
 
 
-def _refresh_analysis(stock_id):
+def _run_current_analysis(stock_id):
     # 延後 import，避免單純啟動 UI 時就載入完整分析依賴。
     from main import run_analysis
 
-    run_analysis(stock_id=stock_id)
-
-
-def _ensure_fresh_analysis(stock_id):
-    if _is_log_stale(stock_id):
-        try:
-            _refresh_analysis(stock_id)
-        except Exception as exc:
-            print(f"⚠ {stock_id} 自動刷新分析失敗，暫以既有 logs 顯示：{exc}")
+    analysis = run_analysis(stock_id=stock_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="無法取得最新分析資料，請確認股票代號或資料來源。")
+    return analysis
 
 
 def _load_history(stock_id, reverse=True):
@@ -302,11 +297,8 @@ def _plain_summary(stock_id, action, decision):
         parts.append(f"建議：{decision.get('entry_advice') or action}。")
     return "".join(parts)
 
-def _analysis_from_log(stock_id):
-    latest = _latest_log_entry(stock_id)
-    if latest is None:
-        raise HTTPException(status_code=404, detail="尚未有排程分析紀錄，請先執行分析流程寫入 logs。")
-    date, payload = latest
+def _analysis_payload(stock_id, payload, date=None):
+    date = date or datetime.today().strftime("%Y-%m-%d")
     decision = payload.get("decision", {}) if isinstance(payload, dict) else {}
     rr = decision.get("rr_metrics", {}) if isinstance(decision, dict) else {}
     buy = decision.get("buy_recommendation", {}) if isinstance(decision, dict) else {}
@@ -366,8 +358,39 @@ def _analysis_from_log(stock_id):
     }
 
 
+def _analysis_from_log(stock_id):
+    latest = _latest_log_entry(stock_id)
+    if latest is None:
+        raise HTTPException(status_code=404, detail="尚未有歷史分析紀錄。")
+    date, payload = latest
+    return _analysis_payload(stock_id, payload, date=date)
+
+
+def _analysis_from_result(stock_id, analysis):
+    df = analysis.get("df")
+    decision = analysis.get("decision") or {}
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail="最新分析沒有可顯示的價格資料。")
+
+    latest_data_date = pd.to_datetime(df["Date"], errors="coerce").max() if "Date" in df.columns else pd.NaT
+    date = latest_data_date.strftime("%Y-%m-%d") if not pd.isna(latest_data_date) else datetime.today().strftime("%Y-%m-%d")
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "data_source": "TWSE",
+        "close_price": float(df["Close"].iloc[-1]) if "Close" in df.columns else None,
+        "chip_score": decision.get("chip_score") if isinstance(decision, dict) else None,
+        "chip_signals": decision.get("chip_signals") if isinstance(decision, dict) else None,
+        "scorecard": decision.get("scorecard") if isinstance(decision, dict) else None,
+        "final_score": decision.get("final_score") if isinstance(decision, dict) else None,
+        "score_grade": decision.get("score_grade") if isinstance(decision, dict) else None,
+        "score_strength": decision.get("score_strength") if isinstance(decision, dict) else None,
+        "decision": decision,
+    }
+    return _analysis_payload(stock_id, payload, date=date)
+
+
 def _build_card(stock_id):
-    analysis = _analysis_from_log(stock_id)
+    analysis = _analysis_from_result(stock_id, _run_current_analysis(stock_id))
     summary_reasons = analysis["reasons_good"][:2] + analysis["reasons_bad"][:1]
     return {
         **analysis,
@@ -397,9 +420,7 @@ async def add_to_watchlist(request: Request):
     stock_id = await _form_stock_id(request)
     if not stock_id:
         return RedirectResponse("/", status_code=303)
-    _ensure_fresh_analysis(stock_id)
-    if stock_id not in _available_stocks():
-        raise HTTPException(status_code=404, detail="分析後仍未產生 logs；請確認股票代號或資料來源。")
+    _run_current_analysis(stock_id)
     watchlist = _load_watchlist()
     if stock_id not in watchlist:
         watchlist.append(stock_id)
@@ -418,6 +439,5 @@ async def remove_from_watchlist(request: Request):
 @app.get("/stocks/{stock_id}", response_class=HTMLResponse)
 def stock_detail(request: Request, stock_id: str):
     stock_id = _normalize_stock_id(stock_id)
-    _ensure_fresh_analysis(stock_id)
-    analysis = _analysis_from_log(stock_id)
+    analysis = _analysis_from_result(stock_id, _run_current_analysis(stock_id))
     return templates.TemplateResponse(request, "stock.html", {"a": analysis})
