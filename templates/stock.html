@@ -6,6 +6,7 @@
   <title>{{ a.stock_id }} 分析</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/dashboard.css" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
   <main class="container py-3">
@@ -15,6 +16,7 @@
         <div>
           <h1>{{ a.stock_id }}</h1>
           <div class="suggestion">{{ a.action_icon }} 建議：{{ a.action }}</div>
+          <div class="plain-summary mt-2">{{ a.plain_summary }}</div>
           <div class="text-secondary">分析日期：{{ a.date }}（由 logs 快取載入）</div>
           <div class="stars fs-4">{{ a.stars }} <span>{{ a.score }}分</span></div>
         </div>
@@ -22,6 +24,7 @@
       </div>
       <hr>
       <div class="grid4">
+        <div class="traffic {{ a.traffic_light.class }}"><span>{{ a.traffic_light.icon }}</span> {{ a.traffic_light.label }}</div>
         <div>🟢 分數等級 <b>{{ a.score_grade }}</b></div>
         <div>🟡 技術面 <b>{{ a.technical_score }}</b></div>
         <div>🔴 籌碼 <b>{{ a.chip_score }}</b></div>
@@ -69,7 +72,21 @@
             <div>MUP：{{ a.mup_status }} / {{ a.mup_text }}</div>
             <div>市場溫度：{{ a.result.market_temp }}</div>
           </div>
-          <p class="text-secondary mt-3">下一步可在此接 Plotly K 線，並提供日K/周K/月K與 MA、布林、MACD、RSI 勾選。</p>
+          <div class="chart-card mt-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3>K 線 / 成交量 / MA20 / MA60</h3>
+              <small class="text-secondary">Plotly 互動圖</small>
+            </div>
+            {% if a.price_chart.available %}
+            <div id="price-chart" class="plot"></div>
+            {% else %}
+            <p class="text-secondary mb-0">{{ a.price_chart.reason }}</p>
+            {% endif %}
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-12 col-lg-6"><div class="chart-card"><h3>AI 趨勢</h3><div id="ai-trend" class="plot small-plot"></div></div></div>
+            <div class="col-12 col-lg-6"><div class="chart-card"><h3>RR 趨勢</h3><div id="rr-trend" class="plot small-plot"></div></div></div>
+          </div>
         </div></div>
       </div>
       <div class="tab-pane fade" id="history">
@@ -86,5 +103,25 @@
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const priceRows = {{ a.price_chart.rows|tojson }};
+    const trendRows = {{ a.trend_history|tojson }};
+    const layoutBase = {paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: '#0b1220', font: {color: '#cbd5e1'}, margin: {l: 45, r: 20, t: 10, b: 35}, xaxis: {gridcolor: '#263244'}, yaxis: {gridcolor: '#263244'}};
+
+    if (document.querySelector('#price-chart') && priceRows.length) {
+      Plotly.newPlot('price-chart', [
+        {type: 'candlestick', x: priceRows.map(r => r.date), open: priceRows.map(r => r.open), high: priceRows.map(r => r.high), low: priceRows.map(r => r.low), close: priceRows.map(r => r.close), name: 'K線'},
+        {type: 'bar', x: priceRows.map(r => r.date), y: priceRows.map(r => r.volume), name: '成交量', yaxis: 'y2', opacity: 0.3},
+        {type: 'scatter', mode: 'lines', x: priceRows.map(r => r.date), y: priceRows.map(r => r.ma20), name: 'MA20', line: {color: '#38bdf8'}},
+        {type: 'scatter', mode: 'lines', x: priceRows.map(r => r.date), y: priceRows.map(r => r.ma60), name: 'MA60', line: {color: '#facc15'}}
+      ], {...layoutBase, height: 420, yaxis2: {overlaying: 'y', side: 'right', showgrid: false, title: 'Volume'}, xaxis: {...layoutBase.xaxis, rangeslider: {visible: false}}}, {responsive: true});
+    }
+
+    const drawTrend = (target, key, name, color) => {
+      Plotly.newPlot(target, [{type: 'scatter', mode: 'lines+markers', x: trendRows.map(r => r.date), y: trendRows.map(r => r[key]), name, line: {color, width: 3}}], {...layoutBase, height: 250}, {responsive: true});
+    };
+    drawTrend('ai-trend', 'ai', 'AI 信心', '#86efac');
+    drawTrend('rr-trend', 'rr', 'RR', '#fbbf24');
+  </script>
 </body>
 </html>

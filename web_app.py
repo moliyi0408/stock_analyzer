@@ -1,5 +1,8 @@
 from pathlib import Path
+from numbers import Real
 import json
+
+import pandas as pd
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -8,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_DIR = BASE_DIR / "logs"
+PRICE_DIR = BASE_DIR / "datas" / "price"
 
 app = FastAPI(title="Stock Analyzer Dashboard")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -15,7 +19,9 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 
 def _round(value, digits=2):
-    return round(value, digits) if isinstance(value, (int, float)) else value
+    if pd.isna(value):
+        return None
+    return round(float(value), digits) if isinstance(value, Real) else value
 
 
 def _load_log(stock_id):
@@ -40,20 +46,61 @@ def _latest_log_entry(stock_id):
     return latest_date, payload
 
 
-def _load_history(stock_id):
+def _load_history(stock_id, reverse=True):
     rows = []
-    for date, payload in sorted(_load_log(stock_id).items(), reverse=True):
+    items = sorted(_load_log(stock_id).items(), reverse=reverse)
+    for date, payload in items:
         decision = payload.get("decision", {}) if isinstance(payload, dict) else {}
         rr = decision.get("rr_metrics", {}) if isinstance(decision, dict) else {}
         rows.append({
             "date": date,
-            "close": payload.get("close_price"),
-            "ai": decision.get("ai_confidence_score"),
-            "rr": rr.get("rr"),
+            "close": _round(payload.get("close_price")),
+            "ai": _round(decision.get("ai_confidence_score")),
+            "rr": _round(rr.get("rr")),
             "advice": decision.get("entry_advice"),
-            "score": payload.get("final_score") or decision.get("final_score"),
+            "score": _round(payload.get("final_score") or decision.get("final_score")),
         })
     return rows
+
+
+def _load_price_chart(stock_id, limit=120):
+    path = PRICE_DIR / f"{stock_id}_price.csv"
+    if not path.exists():
+        return {"available": False, "reason": "尚未建立價格快取，無法顯示 K 線。", "rows": []}
+
+    df = pd.read_csv(path)
+    if "Date" not in df.columns:
+        return {"available": False, "reason": "價格快取缺少 Date 欄位。", "rows": []}
+
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"]).sort_values("Date")
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        if col not in df.columns:
+            df[col] = pd.NA
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    if df.empty or df["Close"].dropna().empty:
+        return {"available": False, "reason": "價格快取沒有可用收盤價。", "rows": []}
+
+    df["MA20"] = df["Close"].rolling(20).mean()
+    df["MA60"] = df["Close"].rolling(60).mean()
+    rows = df.tail(limit).where(pd.notna(df), None).to_dict("records")
+    return {
+        "available": True,
+        "reason": "",
+        "rows": [
+            {
+                "date": r["Date"].strftime("%Y-%m-%d"),
+                "open": _round(r.get("Open")),
+                "high": _round(r.get("High")),
+                "low": _round(r.get("Low")),
+                "close": _round(r.get("Close")),
+                "volume": _round(r.get("Volume"), 0),
+                "ma20": _round(r.get("MA20")),
+                "ma60": _round(r.get("MA60")),
+            }
+            for r in rows
+        ],
+    }
 
 
 def _available_stocks():
@@ -117,6 +164,37 @@ def _build_reasons(payload, decision):
     return [r for r in good if r], [r for r in bad if r]
 
 
+
+def _traffic_light(action):
+    if action == "分批布局":
+        return {"icon": "🟢", "label": "可以布局", "class": "go"}
+    if action == "暫避":
+        return {"icon": "🔴", "label": "避開", "class": "avoid"}
+    if action == "資料不足":
+        return {"icon": "⚪", "label": "資料不足", "class": "neutral"}
+    return {"icon": "🟡", "label": "等待", "class": "wait"}
+
+
+def _plain_summary(stock_id, action, decision):
+    rr = decision.get("rr_metrics", {}) if isinstance(decision, dict) else {}
+    mup = decision.get("mup_scorecard", {}) if isinstance(decision, dict) else {}
+    buy = decision.get("buy_recommendation", {}) if isinstance(decision, dict) else {}
+    tiers = [t.get("price") for t in buy.get("tiers", []) if isinstance(t, dict) and t.get("price") is not None]
+    support = decision.get("support_level")
+    parts = [f"{stock_id} {action}。"]
+    if support:
+        parts.append("接近支撐，")
+    parts.append("RR 合格，" if rr.get("rr_pass") else "RR 尚未合格，")
+    if mup.get("status_code") in (None, "IGNORE", "WATCHLIST"):
+        parts.append("但 MUP 尚未成立。")
+    else:
+        parts.append("且 MUP 已轉強。")
+    if tiers:
+        parts.append(f"建議：{_round(tiers[-1])} 附近承接。")
+    else:
+        parts.append(f"建議：{decision.get('entry_advice') or action}。")
+    return "".join(parts)
+
 def _analysis_from_log(stock_id):
     latest = _latest_log_entry(stock_id)
     if latest is None:
@@ -130,12 +208,16 @@ def _analysis_from_log(stock_id):
     ai = decision.get("ai_confidence_score")
     action = _action_label(decision.get("entry_advice"))
     reasons_good, reasons_bad = _build_reasons(payload, decision)
+    history = _load_history(stock_id)
+    trend_history = _load_history(stock_id, reverse=False)
     return {
         "stock_id": stock_id,
         "date": date,
         "price": _round(payload.get("close_price") or decision.get("current_price")),
         "action": action,
         "action_icon": _action_icon(action),
+        "traffic_light": _traffic_light(action),
+        "plain_summary": _plain_summary(stock_id, action, decision),
         "stars": _stars(score),
         "score": _round(score),
         "score_grade": payload.get("score_grade") or decision.get("score_grade"),
@@ -153,7 +235,9 @@ def _analysis_from_log(stock_id):
         "reasons_good": reasons_good,
         "reasons_bad": reasons_bad,
         "result": decision,
-        "history": _load_history(stock_id),
+        "history": history,
+        "trend_history": trend_history,
+        "price_chart": _load_price_chart(stock_id),
     }
 
 
