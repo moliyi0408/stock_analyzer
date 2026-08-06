@@ -12,19 +12,28 @@
     <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
       <div>
         <h1 class="mb-2">我的股票</h1>
-        <p class="text-secondary mb-0">Dashboard 只讀取每日排程寫入的 logs，快速查看 AI、RR、星等與一句話建議。</p>
+        <p class="text-secondary mb-0">Dashboard 是 Viewer：只顯示 Watchlist 內、且已由每日分析流程寫入 logs 的股票。</p>
       </div>
-      <div class="search-box">
-        <label class="form-label" for="stock-search">🔍 搜尋股票</label>
-        <input id="stock-search" class="form-control" type="search" placeholder="輸入 2330 或建議關鍵字" autocomplete="off">
-      </div>
+      <form class="search-box" action="/watchlist/add" method="post">
+        <label class="form-label" for="stock-search">🔍 搜尋或加入股票</label>
+        <div class="input-group">
+          <input id="stock-search" name="stock_id" class="form-control" type="search" placeholder="輸入 2330 後按 Enter" autocomplete="off" list="available-stocks">
+          <button class="btn btn-primary" type="submit">加入</button>
+        </div>
+        <datalist id="available-stocks">
+          {% for stock_id in available_stocks %}
+          <option value="{{ stock_id }}"></option>
+          {% endfor %}
+        </datalist>
+        <div class="form-text text-secondary">若 logs 尚未存在，請先執行分析流程；首頁不會在開頁時重新分析。</div>
+      </form>
     </div>
 
     <div class="row g-3" id="stock-list">
       {% for c in cards %}
       <div class="col-12 col-md-6 col-xl-4 stock-item" data-search="{{ c.stock_id }} {{ c.action }} {{ c.ai_score }} {{ c.rr }} {{ c.summary_reasons|join(' ') }}">
-        <a class="card stock-card text-decoration-none h-100" href="/stocks/{{ c.stock_id }}">
-          <div class="card-body">
+        <div class="card stock-card h-100">
+          <div class="card-body d-flex flex-column">
             <div class="d-flex justify-content-between align-items-start gap-3">
               <div>
                 <h2>{{ c.stock_id }}</h2>
@@ -36,16 +45,24 @@
             <div class="mini-metrics mt-3">
               <span>AI：{{ c.ai_score or 'N/A' }}</span>
               <span>RR：{{ c.rr or 'N/A' }}</span>
+              <span>日期：{{ c.date }}</span>
             </div>
-            <ul class="card-reasons mt-3 mb-0">
+            <ul class="card-reasons mt-3 mb-4">
               {% for r in c.summary_reasons %}<li>{{ r }}</li>{% endfor %}
             </ul>
+            <div class="d-flex gap-2 mt-auto">
+              <a class="btn btn-outline-info flex-grow-1" href="/stocks/{{ c.stock_id }}">查看</a>
+              <form action="/watchlist/remove" method="post">
+                <input type="hidden" name="stock_id" value="{{ c.stock_id }}">
+                <button class="btn btn-outline-danger" type="submit" title="只從我的股票移除，不刪 logs 或 datas">刪除</button>
+              </form>
+            </div>
           </div>
-        </a>
+        </div>
       </div>
       {% endfor %}
     </div>
-    <p id="empty-state" class="text-secondary mt-4 d-none">找不到符合條件的股票。</p>
+    <p id="empty-state" class="text-secondary mt-4 {% if cards %}d-none{% endif %}">我的股票沒有符合條件的項目；搜尋已存在 logs 的股票即可加入。</p>
   </main>
   <script>
     const searchInput = document.querySelector('#stock-search');

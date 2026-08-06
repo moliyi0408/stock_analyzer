@@ -1,17 +1,20 @@
 from pathlib import Path
 from numbers import Real
+from urllib.parse import parse_qs
 import json
 
 import pandas as pd
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_DIR = BASE_DIR / "logs"
 PRICE_DIR = BASE_DIR / "datas" / "price"
+WATCHLIST_PATH = BASE_DIR / "watchlist.json"
+DEFAULT_WATCHLIST = ["1504", "2330", "0050"]
 
 app = FastAPI(title="Stock Analyzer Dashboard")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -103,9 +106,48 @@ def _load_price_chart(stock_id, limit=120):
     }
 
 
+def _normalize_stock_id(stock_id):
+    return str(stock_id or "").strip().upper()
+
+
 def _available_stocks():
     ids = {p.stem for p in LOG_DIR.glob("*.json")} if LOG_DIR.exists() else set()
     return sorted(ids)
+
+
+def _load_watchlist():
+    if not WATCHLIST_PATH.exists():
+        return [stock_id for stock_id in DEFAULT_WATCHLIST if (LOG_DIR / f"{stock_id}.json").exists()]
+    try:
+        data = json.loads(WATCHLIST_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    seen = set()
+    stocks = []
+    for stock_id in data:
+        normalized = _normalize_stock_id(stock_id)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            stocks.append(normalized)
+    return stocks
+
+
+def _save_watchlist(stock_ids):
+    normalized = []
+    seen = set()
+    for stock_id in stock_ids:
+        stock_id = _normalize_stock_id(stock_id)
+        if stock_id and stock_id not in seen:
+            seen.add(stock_id)
+            normalized.append(stock_id)
+    WATCHLIST_PATH.write_text(json.dumps(normalized, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _watchlist_stocks():
+    available = set(_available_stocks())
+    return [stock_id for stock_id in _load_watchlist() if stock_id in available]
 
 
 def _stars(score):
@@ -252,11 +294,44 @@ def _build_card(stock_id):
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    cards = [_build_card(stock_id) for stock_id in _available_stocks()]
-    return templates.TemplateResponse("home.html", {"request": request, "cards": cards})
+    watchlist = _watchlist_stocks()
+    cards = [_build_card(stock_id) for stock_id in watchlist]
+    available = _available_stocks()
+    return templates.TemplateResponse(
+        request,
+        "home.html",
+        {"cards": cards, "available_stocks": available, "watchlist": watchlist},
+    )
+
+
+async def _form_stock_id(request):
+    body = (await request.body()).decode("utf-8")
+    return _normalize_stock_id((parse_qs(body).get("stock_id") or [""])[0])
+
+
+@app.post("/watchlist/add")
+async def add_to_watchlist(request: Request):
+    stock_id = await _form_stock_id(request)
+    if not stock_id:
+        return RedirectResponse("/", status_code=303)
+    if stock_id not in _available_stocks():
+        raise HTTPException(status_code=404, detail="尚未有 logs 快取；請先用排程或 main.py 分析此股票。")
+    watchlist = _load_watchlist()
+    if stock_id not in watchlist:
+        watchlist.append(stock_id)
+        _save_watchlist(watchlist)
+    return RedirectResponse(f"/stocks/{stock_id}", status_code=303)
+
+
+@app.post("/watchlist/remove")
+async def remove_from_watchlist(request: Request):
+    stock_id = await _form_stock_id(request)
+    watchlist = [item for item in _load_watchlist() if item != stock_id]
+    _save_watchlist(watchlist)
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/stocks/{stock_id}", response_class=HTMLResponse)
 def stock_detail(request: Request, stock_id: str):
     analysis = _analysis_from_log(stock_id)
-    return templates.TemplateResponse("stock.html", {"request": request, "a": analysis})
+    return templates.TemplateResponse(request, "stock.html", {"a": analysis})
