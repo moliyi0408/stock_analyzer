@@ -111,8 +111,13 @@ def main():
     fundamental_analysis = deps["analyze_fundamentals"](income_trend_df)
     fundamental_advice = deps["fundamental_strategy"](fundamental_analysis, fundamental_snapshot)
 
-    # 2️⃣ 下載價量/籌碼資料（函式內會自動處理 cache）
-    df = deps["get_feature_data"](stock_id, lookback_months=6, include_chip=True)
+    # 2️⃣ 每次執行都刷新價量/籌碼資料，避免技術指標沿用舊快取
+    df = deps["get_feature_data"](
+        stock_id,
+        lookback_months=6,
+        include_chip=True,
+        force_refresh=True,
+    )
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")
         return
@@ -150,11 +155,26 @@ def main():
     deps["save_analysis_log"](stock_id=stock_id, df=df, result=result)
 
 
+def latest_price_data_date(df):
+    """回傳價格資料最後一筆日期，讓使用者確認現價是否為最新交易日。"""
+    if df is None or df.empty or "Date" not in df.columns:
+        return "N/A"
+
+    import pandas as pd
+
+    latest_date = pd.to_datetime(df["Date"], errors="coerce").max()
+    if pd.isna(latest_date):
+        return "N/A"
+    return latest_date.strftime("%Y-%m-%d")
+
+
 def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_analysis=None, fundamental_advice=None):
     print("========================================📊 股票分析結果")
     print(f"股票代號：{stock_id}")
     close_price = df['Close'].iloc[-1] if 'Close' in df.columns else "N/A"
+    price_data_date = latest_price_data_date(df)
     print(f"現價：{close_price}")
+    print(f"現價資料日期：{price_data_date}")
     printed_metric_values = {}
 
     def safe_get(key, default="N/A"):
