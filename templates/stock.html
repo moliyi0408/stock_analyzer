@@ -14,14 +14,15 @@
       <div class="d-flex justify-content-between align-items-start">
         <div>
           <h1>{{ a.stock_id }}</h1>
-          <div class="suggestion">🟡 建議：{{ a.action }}</div>
+          <div class="suggestion">{{ a.action_icon }} 建議：{{ a.action }}</div>
+          <div class="text-secondary">分析日期：{{ a.date }}（由 logs 快取載入）</div>
           <div class="stars fs-4">{{ a.stars }} <span>{{ a.score }}分</span></div>
         </div>
         <div class="price">{{ a.price }}</div>
       </div>
       <hr>
       <div class="grid4">
-        <div>🟢 基本面 <b>{{ a.fundamental_grade }}</b></div>
+        <div>🟢 分數等級 <b>{{ a.score_grade }}</b></div>
         <div>🟡 技術面 <b>{{ a.technical_score }}</b></div>
         <div>🔴 籌碼 <b>{{ a.chip_score }}</b></div>
         <div>🟡 AI信心 <b>{{ a.ai_score }}</b></div>
@@ -42,7 +43,7 @@
           {% for r in a.reasons_good if r %}<li class="yes">✓ {{ r }}</li>{% endfor %}
           {% for r in a.reasons_bad if r %}<li class="no">✗ {{ r }}</li>{% endfor %}
         </ul>
-        <p class="mb-0">建議：{{ a.result.entry_advice }}</p>
+        <p class="mb-0">建議：{{ a.result.entry_advice or a.action }}</p>
       </div>
     </section>
 
@@ -55,9 +56,8 @@
     <div class="tab-content">
       <div class="tab-pane fade show active" id="fund">
         <div class="card"><div class="card-body">
-          <h2>基本面</h2>
-          <p>ROE：{{ a.fundamental_snapshot.roe or 'N/A' }}｜EPS/毛利率趨勢請搭配原始資料檢視。</p>
-          <p>{{ a.fundamental_advice.summary if a.fundamental_advice }}</p>
+          <h2>快取資訊</h2>
+          <p>本頁直接讀取 logs/{{ a.stock_id }}.json 的最新分析結果，不在使用者開頁時重新呼叫分析引擎。</p>
         </div></div>
       </div>
       <div class="tab-pane fade" id="tech">
