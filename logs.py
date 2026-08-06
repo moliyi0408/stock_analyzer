@@ -64,15 +64,16 @@ def save_analysis_log(stock_id, df, result, base_dir=None):
     else:
         log_data = {}
 
-    # 同一個交易資料日已有紀錄就不寫，避免系統日期晚於資料日期時誤判。
+    # 同一個交易資料日重新分析時直接覆寫，避免 UI 永遠停在第一次寫入的舊判斷。
     if record_date in log_data:
-        print(f"ℹ️ {stock_id} {record_date} 已有紀錄，略過")
-        return
+        print(f"ℹ️ {stock_id} {record_date} 已有紀錄，將以最新分析覆寫")
 
     # 使用 _to_json_safe 套用整個 result
     safe_result = _to_json_safe(result)
 
     log_data[record_date] = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "data_source": "TWSE",
         "close_price": float(df['Close'].iloc[-1]) if 'Close' in df.columns else None,
         "chip_score": safe_result.get("chip_score") if isinstance(safe_result, dict) else None,
         "chip_signals": safe_result.get("chip_signals") if isinstance(safe_result, dict) else None,
