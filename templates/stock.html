@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ a.stock_id }} 分析</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/dashboard.css" rel="stylesheet">
+</head>
+<body>
+  <main class="container py-3">
+    <a href="/" class="back">← 我的股票</a>
+    <section class="hero mt-2">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <h1>{{ a.stock_id }}</h1>
+          <div class="suggestion">🟡 建議：{{ a.action }}</div>
+          <div class="stars fs-4">{{ a.stars }} <span>{{ a.score }}分</span></div>
+        </div>
+        <div class="price">{{ a.price }}</div>
+      </div>
+      <hr>
+      <div class="grid4">
+        <div>🟢 基本面 <b>{{ a.fundamental_grade }}</b></div>
+        <div>🟡 技術面 <b>{{ a.technical_score }}</b></div>
+        <div>🔴 籌碼 <b>{{ a.chip_score }}</b></div>
+        <div>🟡 AI信心 <b>{{ a.ai_score }}</b></div>
+      </div>
+    </section>
+
+    <section class="row g-3 mt-1">
+      <div class="col-6 col-lg-3"><div class="metric"><small>買點</small>{% for p in a.buy_prices %}<strong>{{ p }}</strong>{% endfor %}</div></div>
+      <div class="col-6 col-lg-3"><div class="metric"><small>停損</small><strong>{{ a.stop_loss }}</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="metric"><small>停利</small>{% for p in a.take_profit if p %}<strong>{{ p }}</strong>{% endfor %}</div></div>
+      <div class="col-6 col-lg-3"><div class="metric"><small>RR</small><strong>{{ a.rr }} {% if a.rr_pass %}✅{% endif %}</strong></div></div>
+    </section>
+
+    <section class="card mt-3">
+      <div class="card-body">
+        <h2>AI 投資助理</h2>
+        <ul class="checks">
+          {% for r in a.reasons_good if r %}<li class="yes">✓ {{ r }}</li>{% endfor %}
+          {% for r in a.reasons_bad if r %}<li class="no">✗ {{ r }}</li>{% endfor %}
+        </ul>
+        <p class="mb-0">建議：{{ a.result.entry_advice }}</p>
+      </div>
+    </section>
+
+    <ul class="nav nav-pills my-3" id="tabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#fund">基本面</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tech">技術分析</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#history">歷史紀錄</button></li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="fund">
+        <div class="card"><div class="card-body">
+          <h2>基本面</h2>
+          <p>ROE：{{ a.fundamental_snapshot.roe or 'N/A' }}｜EPS/毛利率趨勢請搭配原始資料檢視。</p>
+          <p>{{ a.fundamental_advice.summary if a.fundamental_advice }}</p>
+        </div></div>
+      </div>
+      <div class="tab-pane fade" id="tech">
+        <div class="card"><div class="card-body">
+          <h2>技術分析</h2>
+          <div class="grid4">
+            <div>趨勢：{{ a.result.trend }}</div>
+            <div>MA5：{{ a.result.ma5_status }}</div>
+            <div>MUP：{{ a.mup_status }} / {{ a.mup_text }}</div>
+            <div>市場溫度：{{ a.result.market_temp }}</div>
+          </div>
+          <p class="text-secondary mt-3">下一步可在此接 Plotly K 線，並提供日K/周K/月K與 MA、布林、MACD、RSI 勾選。</p>
+        </div></div>
+      </div>
+      <div class="tab-pane fade" id="history">
+        <div class="card"><div class="card-body">
+          <h2>歷史紀錄</h2>
+          <div class="table-responsive">
+            <table class="table">
+              <thead><tr><th>日期</th><th>AI</th><th>RR</th><th>建議</th></tr></thead>
+              <tbody>{% for h in a.history %}<tr><td>{{ h.date }}</td><td>{{ h.ai }}</td><td>{{ h.rr }}</td><td>{{ h.advice }}</td></tr>{% endfor %}</tbody>
+            </table>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
