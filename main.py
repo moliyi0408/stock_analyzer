@@ -7,6 +7,7 @@ def _check_required_dependencies():
     required_modules = {
         "pandas": "pip install pandas",
         "numpy": "pip install numpy",
+        "requests": "pip install requests",
     }
     missing = [
         f"{name}（安裝指令：{install_hint}）"
@@ -88,13 +89,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    if not _check_required_dependencies():
-        return
-
-    args = parse_args()
+def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
+    """執行單一股票分析並寫入 logs，供 CLI 與 UI 共同使用。"""
     deps = _load_runtime_dependencies()
-    stock_id = args.stock_id
 
     # 1️⃣ 先確保基本面資料可用（cache 不存在或資料空時，主動刷新一次 API）
     fundamental_payload = deps["get_fundamental"](stock_id)
@@ -134,8 +131,8 @@ def main():
         result = deps["decision_engine"](
             df=df,
             chip_strength=5,
-            entry_price=args.entry_price,
-            holding_mode=args.holding_mode,
+            entry_price=entry_price,
+            holding_mode=holding_mode,
         )
     except Exception as e:
             latest_snapshot = {}
@@ -153,6 +150,18 @@ def main():
 
     # 5️⃣ 儲存分析紀錄
     deps["save_analysis_log"](stock_id=stock_id, df=df, result=result)
+
+
+def main():
+    if not _check_required_dependencies():
+        return
+
+    args = parse_args()
+    run_analysis(
+        stock_id=args.stock_id,
+        entry_price=args.entry_price,
+        holding_mode=args.holding_mode,
+    )
 
 
 def latest_price_data_date(df):

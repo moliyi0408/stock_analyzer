@@ -2,6 +2,7 @@ from pathlib import Path
 from numbers import Real
 from urllib.parse import parse_qs
 import json
+from datetime import datetime
 
 import pandas as pd
 
@@ -15,6 +16,11 @@ LOG_DIR = BASE_DIR / "logs"
 PRICE_DIR = BASE_DIR / "datas" / "price"
 WATCHLIST_PATH = BASE_DIR / "watchlist.json"
 DEFAULT_WATCHLIST = ["1504", "2330", "0050"]
+STOCK_NAMES = {
+    "006208": "富邦台50",
+    "0050": "元大台灣50",
+    "1504": "東元",
+}
 
 app = FastAPI(title="Stock Analyzer Dashboard")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -47,6 +53,38 @@ def _latest_log_entry(stock_id):
     if not isinstance(payload, dict):
         return None
     return latest_date, payload
+
+
+
+def _parse_date(value):
+    parsed = pd.to_datetime(value, errors="coerce")
+    return None if pd.isna(parsed) else parsed
+
+
+def _is_log_stale(stock_id):
+    latest = _latest_log_entry(stock_id)
+    if latest is None:
+        return True
+    date, _payload = latest
+    parsed = _parse_date(date)
+    if parsed is None:
+        return True
+    return parsed.date() < datetime.today().date()
+
+
+def _refresh_analysis(stock_id):
+    # 延後 import，避免單純啟動 UI 時就載入完整分析依賴。
+    from main import run_analysis
+
+    run_analysis(stock_id=stock_id)
+
+
+def _ensure_fresh_analysis(stock_id):
+    if _is_log_stale(stock_id):
+        try:
+            _refresh_analysis(stock_id)
+        except Exception as exc:
+            print(f"⚠ {stock_id} 自動刷新分析失敗，暫以既有 logs 顯示：{exc}")
 
 
 def _load_history(stock_id, reverse=True):
@@ -167,6 +205,33 @@ def _tone(score):
     return "bad"
 
 
+
+def _score_label(score):
+    if not isinstance(score, (int, float)):
+        return "資料不足"
+    if score >= 70:
+        return "偏多"
+    if score >= 45:
+        return "中性觀察"
+    return "偏弱"
+
+
+def _rr_label(rr):
+    if not isinstance(rr, (int, float)):
+        return {"icon": "⚪", "label": "資料不足", "class": "neutral"}
+    if rr >= 2:
+        return {"icon": "🟢", "label": "良好", "class": "good"}
+    if rr >= 1:
+        return {"icon": "🟡", "label": "普通", "class": "warn"}
+    return {"icon": "🔴", "label": "不佳", "class": "bad"}
+
+
+def _support_distance(price, support):
+    if not all(isinstance(v, (int, float)) for v in [price, support]) or price == 0:
+        return None
+    return _round((price - support) / price * 100, 2)
+
+
 def _action_label(advice):
     text = str(advice or "資料不足")
     if any(k in text for k in ["略過", "暫不承接", "失守"]):
@@ -252,10 +317,22 @@ def _analysis_from_log(stock_id):
     reasons_good, reasons_bad = _build_reasons(payload, decision)
     history = _load_history(stock_id)
     trend_history = _load_history(stock_id, reverse=False)
+    price = _round(payload.get("close_price") or decision.get("current_price"))
+    prev_close = next((h.get("close") for h in history[1:] if h.get("close") is not None), None)
+    price_change = _round(price - prev_close) if isinstance(price, (int, float)) and isinstance(prev_close, (int, float)) else None
+    price_change_pct = _round(price_change / prev_close * 100) if isinstance(price_change, (int, float)) and prev_close else None
+    support = decision.get("support_level")
+    resistance_zone = decision.get("resistance_zone") if isinstance(decision.get("resistance_zone"), list) else []
+    resistance = resistance_zone[-1] if resistance_zone else decision.get("take_profit")
     return {
         "stock_id": stock_id,
+        "stock_name": STOCK_NAMES.get(stock_id, ""),
         "date": date,
-        "price": _round(payload.get("close_price") or decision.get("current_price")),
+        "generated_at": payload.get("generated_at"),
+        "data_source": payload.get("data_source") or "TWSE",
+        "price": price,
+        "price_change": price_change,
+        "price_change_pct": price_change_pct,
         "action": action,
         "action_icon": _action_icon(action),
         "traffic_light": _traffic_light(action),
@@ -267,13 +344,19 @@ def _analysis_from_log(stock_id):
         "chip_score": payload.get("chip_score") or decision.get("chip_score"),
         "ai_score": ai,
         "ai_tone": _tone(ai),
+        "score_label": _score_label(ai),
+        "ai_bar_width": max(0, min(100, ai)) if isinstance(ai, (int, float)) else 0,
         "rr": rr.get("rr"),
+        "rr_status": _rr_label(rr.get("rr")),
         "rr_pass": rr.get("rr_pass"),
+        "support_level": support,
+        "support_distance_pct": _support_distance(price, support),
+        "resistance": _round(resistance),
         "mup_status": mup.get("status_code"),
         "mup_text": mup.get("status"),
         "buy_prices": [t.get("price") for t in buy.get("tiers", []) if isinstance(t, dict)],
         "stop_loss": decision.get("stop_loss"),
-        "take_profit": [decision.get("take_profit"), *(((decision.get("resistance_zone") or []) if isinstance(decision.get("resistance_zone"), list) else []))],
+        "take_profit": [decision.get("take_profit"), *resistance_zone],
         "reasons_good": reasons_good,
         "reasons_bad": reasons_bad,
         "result": decision,
@@ -314,8 +397,9 @@ async def add_to_watchlist(request: Request):
     stock_id = await _form_stock_id(request)
     if not stock_id:
         return RedirectResponse("/", status_code=303)
+    _ensure_fresh_analysis(stock_id)
     if stock_id not in _available_stocks():
-        raise HTTPException(status_code=404, detail="尚未有 logs 快取；請先用排程或 main.py 分析此股票。")
+        raise HTTPException(status_code=404, detail="分析後仍未產生 logs；請確認股票代號或資料來源。")
     watchlist = _load_watchlist()
     if stock_id not in watchlist:
         watchlist.append(stock_id)
@@ -333,5 +417,7 @@ async def remove_from_watchlist(request: Request):
 
 @app.get("/stocks/{stock_id}", response_class=HTMLResponse)
 def stock_detail(request: Request, stock_id: str):
+    stock_id = _normalize_stock_id(stock_id)
+    _ensure_fresh_analysis(stock_id)
     analysis = _analysis_from_log(stock_id)
     return templates.TemplateResponse(request, "stock.html", {"a": analysis})

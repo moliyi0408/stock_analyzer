@@ -11,19 +11,49 @@
 <body>
   <main class="container py-3">
     <a href="/" class="back">← 我的股票</a>
-    <section class="hero mt-2">
-      <div class="d-flex justify-content-between align-items-start">
+    <section class="hero mt-2 detail-hero">
+      <div class="hero-top">
         <div>
-          <h1>{{ a.stock_id }}</h1>
+          <div class="eyebrow">ETF / Stock</div>
+          <h1>{{ a.stock_id }}{% if a.stock_name %} <span>{{ a.stock_name }}</span>{% endif %}</h1>
           <div class="suggestion">{{ a.action_icon }} 建議：{{ a.action }}</div>
           <div class="plain-summary mt-2">{{ a.plain_summary }}</div>
-          <div class="text-secondary">分析日期：{{ a.date }}（由 logs 快取載入）</div>
-          <div class="stars fs-4">{{ a.stars }} <span>{{ a.score }}分</span></div>
         </div>
-        <div class="price">{{ a.price }}</div>
+        <div class="update-card">
+          <small>資料更新</small>
+          <strong>{{ a.date }}</strong>
+          {% if a.generated_at %}<span>{{ a.generated_at[11:16] }}</span>{% endif %}
+          <em>{{ a.data_source }}</em>
+        </div>
       </div>
+
       <hr>
-      <div class="grid4">
+
+      <div class="quote-panel">
+        <div>
+          <small>最新價格</small>
+          <div class="price">{{ a.price }}</div>
+          {% if a.price_change is not none %}
+          <div class="price-change {% if a.price_change >= 0 %}up{% else %}down{% endif %}">
+            {% if a.price_change >= 0 %}▲{% else %}▼{% endif %} {{ a.price_change }} ({{ a.price_change_pct }}%)
+          </div>
+          {% endif %}
+        </div>
+        <div class="score-block">
+          <small>AI Score</small>
+          <div class="stars fs-4">{{ a.stars }}</div>
+          <strong class="tone-{{ a.ai_tone }}">{{ a.ai_score or a.score }} /100</strong>
+          <span>{{ a.score_label }}</span>
+          <div class="score-bar"><i style="width: {{ a.ai_bar_width }}%"></i></div>
+        </div>
+        <div class="score-block rr-{{ a.rr_status.class }}">
+          <small>Risk Reward</small>
+          <div class="rr-label">{{ a.rr_status.icon }} {{ a.rr_status.label }}</div>
+          <strong>{{ a.rr }}</strong>
+        </div>
+      </div>
+
+      <div class="grid4 mt-3">
         <div class="traffic {{ a.traffic_light.class }}"><span>{{ a.traffic_light.icon }}</span> {{ a.traffic_light.label }}</div>
         <div>🟢 分數等級 <b>{{ a.score_grade }}</b></div>
         <div>🟡 技術面 <b>{{ a.technical_score }}</b></div>
@@ -33,10 +63,10 @@
     </section>
 
     <section class="row g-3 mt-1">
-      <div class="col-6 col-lg-3"><div class="metric"><small>買點</small>{% for p in a.buy_prices %}<strong>{{ p }}</strong>{% endfor %}</div></div>
+      <div class="col-6 col-lg-3"><div class="metric"><small>支撐</small><strong>{{ a.support_level }}</strong><span>目前 {{ a.price }}</span>{% if a.support_distance_pct is not none %}<span>距離 {{ a.support_distance_pct }}%</span>{% endif %}</div></div>
+      <div class="col-6 col-lg-3"><div class="metric"><small>壓力</small><strong>{{ a.resistance }}</strong></div></div>
       <div class="col-6 col-lg-3"><div class="metric"><small>停損</small><strong>{{ a.stop_loss }}</strong></div></div>
-      <div class="col-6 col-lg-3"><div class="metric"><small>停利</small>{% for p in a.take_profit if p %}<strong>{{ p }}</strong>{% endfor %}</div></div>
-      <div class="col-6 col-lg-3"><div class="metric"><small>RR</small><strong>{{ a.rr }} {% if a.rr_pass %}✅{% endif %}</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="metric"><small>買點</small>{% for p in a.buy_prices %}<strong>{{ p }}</strong>{% endfor %}</div></div>
     </section>
 
     <section class="card mt-3">
