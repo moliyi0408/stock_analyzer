@@ -25,18 +25,42 @@ def _build_technical_indicators(price_df: pd.DataFrame) -> pd.DataFrame:
     return technical_df
 
 
-def build_or_load_technical_feature_cache(stock_id: str, price_df: pd.DataFrame, force_refresh: bool = False) -> pd.DataFrame:
-    """建立或讀取技術指標快取。"""
-    cache_path = _cache_path(stock_id)
+def _latest_date(df: pd.DataFrame) -> pd.Timestamp | None:
+    if df is None or df.empty or "Date" not in df.columns:
+        return None
+    latest = pd.to_datetime(df["Date"], errors="coerce").max()
+    if pd.isna(latest):
+        return None
+    return latest.normalize()
 
-    if not force_refresh and cache_path.exists():
-        cached = pd.read_csv(cache_path)
-        cached["Date"] = pd.to_datetime(cached["Date"], errors="coerce")
-        cached = cached.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-        return cached
+
+def _read_feature_cache(cache_path: Path) -> pd.DataFrame:
+    cached = pd.read_csv(cache_path)
+    cached["Date"] = pd.to_datetime(cached["Date"], errors="coerce")
+    return cached.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+
+
+def build_or_load_technical_feature_cache(stock_id: str, price_df: pd.DataFrame, force_refresh: bool = False) -> pd.DataFrame:
+    """建立或讀取技術指標快取。
+
+    技術指標 cache 必須跟最新價格資料同一天；否則會重新計算，避免
+    價格 cache 已更新但分析仍沿用舊指標檔的狀況。
+    """
+    cache_path = _cache_path(stock_id)
 
     if price_df is None or price_df.empty:
         return pd.DataFrame()
+
+    price_latest_date = _latest_date(price_df)
+
+    if not force_refresh and cache_path.exists():
+        cached = _read_feature_cache(cache_path)
+        if _latest_date(cached) == price_latest_date:
+            return cached
+        print(
+            f"ℹ️ {stock_id} 技術指標快取日期 {_latest_date(cached).date() if _latest_date(cached) is not None else 'N/A'} "
+            f"落後價格日期 {price_latest_date.date() if price_latest_date is not None else 'N/A'}，重新計算"
+        )
 
     technical_df = _build_technical_indicators(price_df)
     TECHNICAL_FEATURE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
