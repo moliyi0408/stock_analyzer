@@ -409,7 +409,7 @@ def _analysis_from_result(stock_id, analysis):
 def _ensure_current_analysis(stock_id):
     if _is_log_stale(stock_id):
         return _analysis_from_result(stock_id, _run_current_analysis(stock_id))
-    return _latest_analysis(stock_id)
+    return _analysis_from_log(stock_id)
 
 
 def _build_card(stock_id):
