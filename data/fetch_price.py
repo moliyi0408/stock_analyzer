@@ -53,45 +53,53 @@ def _write_cache(path: Path, df: pd.DataFrame) -> None:
     df.to_csv(path, index=False, encoding="utf-8")
 
 
-def _needs_refresh(df: pd.DataFrame) -> bool:
+def _latest_date(df: pd.DataFrame) -> pd.Timestamp | None:
     if df.empty or "Date" not in df.columns:
-        return True
+        return None
     last_date = pd.to_datetime(df["Date"], errors="coerce").max()
     if pd.isna(last_date):
-        return True
-    return last_date.date() < datetime.today().date()
+        return None
+    return last_date.normalize()
+
+
+def _refresh_from_source(stock_id: str, cached: pd.DataFrame, lookback_months: int) -> pd.DataFrame:
+    if cached.empty:
+        return _merge_months(stock_id, _get_last_n_months(lookback_months))
+
+    latest_month = datetime.today().strftime("%Y%m")
+    source_df = download_twse_csv_auto(stock_id, latest_month)
+    if source_df.empty:
+        return cached
+
+    cached_latest = _latest_date(cached)
+    source_latest = _latest_date(source_df)
+    if cached_latest is not None and source_latest is not None and source_latest <= cached_latest:
+        return cached
+
+    new_df = source_df[~source_df["Date"].isin(cached["Date"])]
+    return (
+        pd.concat([cached, new_df], ignore_index=True)
+        .sort_values("Date")
+        .drop_duplicates(subset=["Date"])
+        .reset_index(drop=True)
+    )
 
 
 def fetch_price(stock_id: str, lookback_months: int = 6, force_refresh: bool = False) -> pd.DataFrame:
     """Get TWSE price data with file cache.
 
-    Cache path: datas/price/{stock_id}_price.csv
+    Cache path: datas/price/{stock_id}_price.csv. When cache exists, compare it
+    with the latest available TWSE data instead of the calendar date, so holidays
+    and pre-close trading days do not force unnecessary refreshes.
     """
     cache_file = PRICE_CACHE_DIR / f"{stock_id}_price.csv"
     cached = _safe_read_price_cache(cache_file)
 
-    if not force_refresh and not _needs_refresh(cached):
-        return cached
-
-    if cached.empty:
-        months = _get_last_n_months(lookback_months)
-        refreshed = _merge_months(stock_id, months)
-    else:
-        latest_month = datetime.today().strftime("%Y%m")
-        new_df = download_twse_csv_auto(stock_id, latest_month)
-        if new_df.empty:
-            refreshed = cached
-        else:
-            new_df = new_df[~new_df["Date"].isin(cached["Date"])]
-            refreshed = (
-                pd.concat([cached, new_df], ignore_index=True)
-                .sort_values("Date")
-                .drop_duplicates(subset=["Date"])
-                .reset_index(drop=True)
-            )
+    refreshed = _refresh_from_source(stock_id, cached, lookback_months)
 
     if refreshed.empty:
         return pd.DataFrame()
 
-    _write_cache(cache_file, refreshed)
+    if force_refresh or not cache_file.exists() or _latest_date(refreshed) != _latest_date(cached):
+        _write_cache(cache_file, refreshed)
     return refreshed
