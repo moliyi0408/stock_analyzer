@@ -108,12 +108,11 @@ def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
     fundamental_analysis = deps["analyze_fundamentals"](income_trend_df)
     fundamental_advice = deps["fundamental_strategy"](fundamental_analysis, fundamental_snapshot)
 
-    # 2️⃣ 每次執行都刷新價量/籌碼資料，避免技術指標沿用舊快取
+    # 2️⃣ 由 data_manager 以 cache-first 流程取得價量/籌碼資料；只有資料來源更新時才刷新快取
     df = deps["get_feature_data"](
         stock_id,
         lookback_months=6,
         include_chip=True,
-        force_refresh=True,
     )
     if df is None or df.empty:
         print("⚠ 無法取得資料，程式終止")

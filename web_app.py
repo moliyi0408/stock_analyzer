@@ -58,18 +58,35 @@ def _latest_log_entry(stock_id):
 
 def _parse_date(value):
     parsed = pd.to_datetime(value, errors="coerce")
-    return None if pd.isna(parsed) else parsed
+    return None if pd.isna(parsed) else parsed.normalize()
+
+
+def _latest_price_cache_date(stock_id):
+    # 延後 import，讓 UI 啟動時不必載入完整資料流程；需要判斷 freshness 時才更新/讀取價格快取。
+    from data.data_manager import get_price
+
+    price_df = get_price(stock_id)
+    if price_df is None or price_df.empty or "Date" not in price_df.columns:
+        return None
+    latest = pd.to_datetime(price_df["Date"], errors="coerce").max()
+    return None if pd.isna(latest) else latest.normalize()
 
 
 def _is_log_stale(stock_id):
     latest = _latest_log_entry(stock_id)
     if latest is None:
         return True
-    date, _payload = latest
-    parsed = _parse_date(date)
-    if parsed is None:
+
+    log_date, _payload = latest
+    parsed_log_date = _parse_date(log_date)
+    if parsed_log_date is None:
         return True
-    return parsed.date() < datetime.today().date()
+
+    latest_price_date = _latest_price_cache_date(stock_id)
+    if latest_price_date is None:
+        return True
+
+    return parsed_log_date < latest_price_date
 
 
 def _run_current_analysis(stock_id):
@@ -389,8 +406,14 @@ def _analysis_from_result(stock_id, analysis):
     return _analysis_payload(stock_id, payload, date=date)
 
 
+def _ensure_current_analysis(stock_id):
+    if _is_log_stale(stock_id):
+        return _analysis_from_result(stock_id, _run_current_analysis(stock_id))
+    return _latest_analysis(stock_id)
+
+
 def _build_card(stock_id):
-    analysis = _analysis_from_result(stock_id, _run_current_analysis(stock_id))
+    analysis = _ensure_current_analysis(stock_id)
     summary_reasons = analysis["reasons_good"][:2] + analysis["reasons_bad"][:1]
     return {
         **analysis,
@@ -420,7 +443,7 @@ async def add_to_watchlist(request: Request):
     stock_id = await _form_stock_id(request)
     if not stock_id:
         return RedirectResponse("/", status_code=303)
-    _run_current_analysis(stock_id)
+    _ensure_current_analysis(stock_id)
     watchlist = _load_watchlist()
     if stock_id not in watchlist:
         watchlist.append(stock_id)
@@ -439,5 +462,5 @@ async def remove_from_watchlist(request: Request):
 @app.get("/stocks/{stock_id}", response_class=HTMLResponse)
 def stock_detail(request: Request, stock_id: str):
     stock_id = _normalize_stock_id(stock_id)
-    analysis = _analysis_from_result(stock_id, _run_current_analysis(stock_id))
+    analysis = _ensure_current_analysis(stock_id)
     return templates.TemplateResponse(request, "stock.html", {"a": analysis})
