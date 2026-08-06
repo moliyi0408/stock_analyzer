@@ -9,25 +9,59 @@
 </head>
 <body>
   <main class="container py-4">
-    <h1 class="mb-3">我的股票</h1>
-    <p class="text-secondary">像 Watchlist 一樣先看分數、星等與目前建議，再點進詳細分析。</p>
-    <div class="row g-3">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+      <div>
+        <h1 class="mb-2">我的股票</h1>
+        <p class="text-secondary mb-0">Dashboard 只讀取每日排程寫入的 logs，快速查看 AI、RR、星等與一句話建議。</p>
+      </div>
+      <div class="search-box">
+        <label class="form-label" for="stock-search">🔍 搜尋股票</label>
+        <input id="stock-search" class="form-control" type="search" placeholder="輸入 2330 或建議關鍵字" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="row g-3" id="stock-list">
       {% for c in cards %}
-      <div class="col-12 col-md-6 col-xl-4">
-        <a class="card stock-card text-decoration-none" href="/stocks/{{ c.stock_id }}">
+      <div class="col-12 col-md-6 col-xl-4 stock-item" data-search="{{ c.stock_id }} {{ c.action }} {{ c.ai_score }} {{ c.rr }} {{ c.summary_reasons|join(' ') }}">
+        <a class="card stock-card text-decoration-none h-100" href="/stocks/{{ c.stock_id }}">
           <div class="card-body">
-            <div class="d-flex justify-content-between">
-              <h2>{{ c.stock_id }}</h2>
-              <span class="stars">{{ c.stars }}</span>
+            <div class="d-flex justify-content-between align-items-start gap-3">
+              <div>
+                <h2>{{ c.stock_id }}</h2>
+                <div class="stars">{{ c.stars }}</div>
+              </div>
+              <span class="action-pill">{{ c.action_icon }} {{ c.action }}</span>
             </div>
-            <div class="display-6">{{ c.price or 'N/A' }}</div>
-            <div class="mt-2 badge rounded-pill text-bg-warning">{{ c.advice }}</div>
-            <div class="score mt-3">{{ c.score or 'N/A' }} 分</div>
+            <div class="display-6 mt-2">{{ c.price or 'N/A' }}</div>
+            <div class="mini-metrics mt-3">
+              <span>AI：{{ c.ai_score or 'N/A' }}</span>
+              <span>RR：{{ c.rr or 'N/A' }}</span>
+            </div>
+            <ul class="card-reasons mt-3 mb-0">
+              {% for r in c.summary_reasons %}<li>{{ r }}</li>{% endfor %}
+            </ul>
           </div>
         </a>
       </div>
       {% endfor %}
     </div>
+    <p id="empty-state" class="text-secondary mt-4 d-none">找不到符合條件的股票。</p>
   </main>
+  <script>
+    const searchInput = document.querySelector('#stock-search');
+    const items = [...document.querySelectorAll('.stock-item')];
+    const emptyState = document.querySelector('#empty-state');
+
+    searchInput.addEventListener('input', () => {
+      const query = searchInput.value.trim().toLowerCase();
+      let visibleCount = 0;
+      items.forEach((item) => {
+        const matches = item.dataset.search.toLowerCase().includes(query);
+        item.classList.toggle('d-none', !matches);
+        if (matches) visibleCount += 1;
+      });
+      emptyState.classList.toggle('d-none', visibleCount !== 0);
+    });
+  </script>
 </body>
 </html>
