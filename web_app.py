@@ -13,7 +13,6 @@ from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_DIR = BASE_DIR / "logs"
-PRICE_DIR = BASE_DIR / "datas" / "price"
 WATCHLIST_PATH = BASE_DIR / "watchlist.json"
 DEFAULT_WATCHLIST = ["1504", "2330", "0050"]
 STOCK_NAMES = {
@@ -117,11 +116,13 @@ def _load_history(stock_id, reverse=True):
 
 
 def _load_price_chart(stock_id, limit=120):
-    path = PRICE_DIR / f"{stock_id}_price.csv"
-    if not path.exists():
-        return {"available": False, "reason": "尚未建立價格快取，無法顯示 K 線。", "rows": []}
+    # Web 不直接讀取價格 CSV；Data Manager 負責快取是否需要更新，所有入口
+    # 因此會取得同一份價格資料。
+    from data.data_manager import get_price
 
-    df = pd.read_csv(path)
+    df = get_price(stock_id)
+    if df is None or df.empty:
+        return {"available": False, "reason": "尚未取得可用價格資料，無法顯示 K 線。", "rows": []}
     if "Date" not in df.columns:
         return {"available": False, "reason": "價格快取缺少 Date 欄位。", "rows": []}
 
