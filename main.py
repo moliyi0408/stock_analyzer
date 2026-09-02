@@ -70,12 +70,6 @@ def translate_text(value):
         return [translate_text(v) for v in value]
     return value
 
-def _has_fundamental_sections(payload):
-    if not isinstance(payload, dict):
-        return False
-    return any(payload.get(section) for section in ["income_statement", "balance_sheet", "cashflow_statement"])
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="股票分析主程式")
     parser.add_argument("--stock-id", default="1504", help="股票代號")
@@ -93,14 +87,8 @@ def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
     """執行單一股票分析並寫入 logs，供 CLI 與 UI 共同使用。"""
     deps = _load_runtime_dependencies()
 
-    # 1️⃣ 先確保基本面資料可用（cache 不存在或資料空時，主動刷新一次 API）
+    # 1️⃣ Data Manager 是基本面快取與資料來源更新的唯一入口。
     fundamental_payload = deps["get_fundamental"](stock_id)
-    if not _has_fundamental_sections(fundamental_payload):
-        print(f"⚠ {stock_id} 基本面快取不存在或資料為空，嘗試從 API 重新抓取...")
-        fundamental_payload = deps["get_fundamental"](stock_id, force_refresh=True)
-
-    if not _has_fundamental_sections(fundamental_payload):
-        print(f"⚠ {stock_id} 基本面資料仍為空，後續將以有限資料繼續分析")
 
     fundamental_snapshot = deps["prepare_fundamental_snapshot"](stock_id, payload=fundamental_payload)
 
@@ -108,7 +96,7 @@ def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
     fundamental_analysis = deps["analyze_fundamentals"](income_trend_df)
     fundamental_advice = deps["fundamental_strategy"](fundamental_analysis, fundamental_snapshot)
 
-    # 2️⃣ 由 data_manager 以 cache-first 流程取得價量/籌碼資料；只有資料來源更新時才刷新快取
+    # 2️⃣ 由 Data Manager 取得價量/籌碼資料與同步的技術指標快取。
     df = deps["get_feature_data"](
         stock_id,
         lookback_months=6,
