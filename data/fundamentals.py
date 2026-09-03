@@ -8,6 +8,12 @@ import pandas as pd
 from data.fetch_fundamental import fetch_fundamental
 
 
+REVENUE_ALIASES = ["Revenue", "營業收入合計", "營業收入", "營收", "TotalRevenue", "total_revenue"]
+GROSS_PROFIT_ALIASES = ["GrossProfit", "營業毛利（毛損）淨額", "營業毛利(毛損)淨額", "營業毛利", "毛利", "gross_profit"]
+OPERATING_INCOME_ALIASES = ["OperatingIncome", "營業利益（損失）", "營業利益(損失)", "營業利益", "OperatingIncomeLoss"]
+EPS_ALIASES = ["EPS", "基本每股盈餘（元）", "基本每股盈餘(元)", "每股盈餘", "每股盈餘(元)"]
+
+
 def _to_float(value: Any) -> float | None:
     if value is None or value is pd.NA:
         return None
@@ -123,9 +129,11 @@ def fetch_fundamentals(stock_id: str) -> Dict[str, Any]:
     }
 
 
-def load_income_statement_trend(stock_id: str) -> pd.DataFrame:
+def load_income_statement_trend(stock_id: str, payload: Dict[str, Any] | None = None) -> pd.DataFrame:
     """Load income statement records and convert them into a date/type pivot table."""
-    raw_data = fetch_fundamentals(stock_id)
+    raw_data = fetch_fundamentals(stock_id) if payload is None else {
+        "income_statement": pd.DataFrame(payload.get("income_statement", [])),
+    }
     income_df = raw_data.get("income_statement", pd.DataFrame())
     if income_df is None or income_df.empty:
         return pd.DataFrame()
@@ -227,7 +235,7 @@ def prepare_fundamental_snapshot(stock_id: str, payload: Dict[str, Any] | None =
 
     income_latest = _latest_statement_row(raw_data.get("income_statement", pd.DataFrame()))
     balance_latest = _latest_statement_row(raw_data.get("balance_sheet", pd.DataFrame()))
-    cashflow_latest = _latest_statement_row(raw_data.get("cashflow_statement", pd.DataFrame()), aggfunc="sum")
+    cashflow_latest = _latest_statement_row(raw_data.get("cashflow_statement", pd.DataFrame()))
 
     roe_value = _first_non_null(
         income_latest,
@@ -268,11 +276,11 @@ def prepare_fundamental_snapshot(stock_id: str, payload: Dict[str, Any] | None =
         gross_profit_value = _to_float(
             _first_non_null(
                 income_latest,
-                ["GrossProfit", "營業毛利（毛損）淨額", "營業毛利", "毛利", "gross_profit"],
+                GROSS_PROFIT_ALIASES,
             )
         )
         revenue_value = _to_float(
-            _first_non_null(income_latest, ["Revenue", "營業收入合計", "營業收入", "營收", "TotalRevenue", "total_revenue"])
+            _first_non_null(income_latest, REVENUE_ALIASES)
         )
         if gross_profit_value is not None and revenue_value not in (None, 0):
             # Snapshot columns are displayed as percentage points (e.g., 23.29)
@@ -346,9 +354,9 @@ def prepare_fundamental_snapshot(stock_id: str, payload: Dict[str, Any] | None =
     # Fallback: If latest statement date misses these fields, look back to the
     # nearest prior period with available values.
     if operating_cf is None:
-        operating_cf = _to_float(_latest_non_null_from_statement(cashflow_df, operating_aliases, aggfunc="sum"))
+        operating_cf = _to_float(_latest_non_null_from_statement(cashflow_df, operating_aliases))
     if capex_cf is None:
-        capex_cf = _to_float(_latest_non_null_from_statement(cashflow_df, capex_aliases, aggfunc="sum"))
+        capex_cf = _to_float(_latest_non_null_from_statement(cashflow_df, capex_aliases))
 
     # Standard FCF formula: Operating Cash Flow - Capital Expenditure.
     # CAPEX is often represented as a negative outflow, so convert it to an
@@ -371,4 +379,6 @@ def prepare_fundamental_snapshot(stock_id: str, payload: Dict[str, Any] | None =
         "gross_margin": _to_float(gross_margin_value),
         "as_of": as_of_dt.strftime("%Y-%m-%d") if as_of_dt is not None else None,
         "source": raw_data.get("source", "unknown"),
+        "fetch_status": (payload or {}).get("fetch_status") if isinstance(payload, dict) else None,
+        "dataset_diagnostics": (payload or {}).get("datasets", {}) if isinstance(payload, dict) else {},
     }

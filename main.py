@@ -92,7 +92,7 @@ def run_analysis(stock_id, entry_price=None, holding_mode="auto"):
 
     fundamental_snapshot = deps["prepare_fundamental_snapshot"](stock_id, payload=fundamental_payload)
 
-    income_trend_df = deps["load_income_statement_trend"](stock_id)
+    income_trend_df = deps["load_income_statement_trend"](stock_id, payload=fundamental_payload)
     fundamental_analysis = deps["analyze_fundamentals"](income_trend_df)
     fundamental_advice = deps["fundamental_strategy"](fundamental_analysis, fundamental_snapshot)
 
@@ -425,6 +425,10 @@ def print_analysis(stock_id, df, result, fundamental_snapshot=None, fundamental_
     print(f"毛利率：{format_percent_or_na(fundamental_snapshot.get('gross_margin'))}")
     print(f"負債比率：{format_percent_or_na(fundamental_snapshot.get('debt_ratio'))}")
     print(f"自由現金流：{format_number_or_na(fundamental_snapshot.get('free_cash_flow'))}")
+    if fundamental_snapshot.get("fetch_status") in {"error", "no_data"}:
+        print(f"基本面資料狀態：{fundamental_snapshot['fetch_status']}")
+        for name, details in fundamental_snapshot.get("dataset_diagnostics", {}).items():
+            print(f"  - {name}: {details.get('status', 'unknown')}（{details.get('record_count', 0)} 筆）{details.get('message') or ''}")
 
     if isinstance(fundamental_analysis, dict) and fundamental_analysis.get("has_data"):
         metrics = fundamental_analysis.get("metrics", {})
