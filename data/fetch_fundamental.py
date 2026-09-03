@@ -49,7 +49,7 @@ def _request_finmind(dataset: str, stock_id: str, timeout: int = 10) -> tuple[pd
     api_message = payload.get("msg")
     records = payload.get("data")
     diagnostic.update({"api_status": api_status, "message": api_message})
-    if api_status not in (None, 0):
+    if api_status not in (None, 0, 200, "success"):
         diagnostic["message"] = api_message or f"FinMind API status {api_status}"
         LOGGER.warning("FinMind API rejected stock_id=%s dataset=%s: %s", stock_id, dataset, diagnostic["message"])
         return pd.DataFrame(), diagnostic
