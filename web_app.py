@@ -73,15 +73,18 @@ def _latest_price_cache_date(stock_id):
 
 def _is_log_stale(stock_id):
     latest = _latest_log_entry(stock_id)
+
     if latest is None:
         return True
 
     log_date, _payload = latest
     parsed_log_date = _parse_date(log_date)
+
     if parsed_log_date is None:
         return True
 
     latest_price_date = _latest_price_cache_date(stock_id)
+
     if latest_price_date is None:
         return True
 

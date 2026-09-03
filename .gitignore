@@ -6,3 +6,13 @@ __pycache__/
 .vscode/
 .idea/
 
+# Runtime / cache data
+logs/*.json
+
+datas/chip/*
+!datas/chip/.gitkeep
+
+datas/feature_cache/*
+!datas/feature_cache/.gitkeep
+
+datas/fundamental/*.json
