@@ -4,6 +4,14 @@ from typing import Any, Iterable
 
 import pandas as pd
 
+from data.fundamentals import (
+    EPS_ALIASES,
+    GROSS_PROFIT_ALIASES,
+    OPERATING_INCOME_ALIASES,
+    REVENUE_ALIASES,
+    _first_non_null,
+)
+
 
 def _to_float(value: Any) -> float | None:
     if value is None:
@@ -15,12 +23,7 @@ def _to_float(value: Any) -> float | None:
 
 
 def _pick_first_value(row: pd.Series, aliases: Iterable[str]) -> float | None:
-    for key in aliases:
-        if key in row.index:
-            value = _to_float(row.get(key))
-            if value is not None:
-                return value
-    return None
+    return _to_float(_first_non_null(row.to_dict(), aliases))
 
 
 def calc_fundamental_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -35,21 +38,16 @@ def calc_fundamental_indicators(df: pd.DataFrame) -> pd.DataFrame:
     local_df["date"] = pd.to_datetime(local_df["date"], errors="coerce")
     local_df = local_df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
-    revenue_aliases = ["Revenue", "營業收入合計", "營業收入", "營收", "TotalRevenue"]
-    gross_profit_aliases = ["GrossProfit", "營業毛利（毛損）淨額", "營業毛利", "毛利"]
-    operating_income_aliases = ["OperatingIncome", "營業利益（損失）", "營業利益", "OperatingIncomeLoss"]
-    eps_aliases = ["EPS", "基本每股盈餘（元）", "每股盈餘", "每股盈餘(元)"]
-
     revenues = []
     gross_profits = []
     operating_incomes = []
     eps_values = []
 
     for _, row in local_df.iterrows():
-        revenues.append(_pick_first_value(row, revenue_aliases))
-        gross_profits.append(_pick_first_value(row, gross_profit_aliases))
-        operating_incomes.append(_pick_first_value(row, operating_income_aliases))
-        eps_values.append(_pick_first_value(row, eps_aliases))
+        revenues.append(_pick_first_value(row, REVENUE_ALIASES))
+        gross_profits.append(_pick_first_value(row, GROSS_PROFIT_ALIASES))
+        operating_incomes.append(_pick_first_value(row, OPERATING_INCOME_ALIASES))
+        eps_values.append(_pick_first_value(row, EPS_ALIASES))
 
     local_df["Revenue"] = revenues
     local_df["GrossProfit"] = gross_profits
