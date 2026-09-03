@@ -70,25 +70,28 @@ def _latest_price_cache_date(stock_id):
     latest = pd.to_datetime(price_df["Date"], errors="coerce").max()
     return None if pd.isna(latest) else latest.normalize()
 
-
 def _is_log_stale(stock_id):
     latest = _latest_log_entry(stock_id)
 
     if latest is None:
+        #print(f"🔍 {stock_id}: 沒有 Log → stale=True")
         return True
 
     log_date, _payload = latest
     parsed_log_date = _parse_date(log_date)
 
     if parsed_log_date is None:
+        #print(f"🔍 {stock_id}: Log 日期無效 → stale=True")
         return True
 
     latest_price_date = _latest_price_cache_date(stock_id)
 
     if latest_price_date is None:
+        #print(f"🔍 {stock_id}: Cache 沒有日期 → stale=True")
         return True
 
     return parsed_log_date < latest_price_date
+
 
 
 def _run_current_analysis(stock_id):
@@ -343,6 +346,7 @@ def _analysis_payload(stock_id, payload, date=None):
         "date": date,
         "generated_at": payload.get("generated_at"),
         "data_source": payload.get("data_source") or "TWSE",
+        "fundamental": payload.get("fundamental"),
         "price": price,
         "price_change": price_change,
         "price_change_pct": price_change_pct,
@@ -398,6 +402,7 @@ def _analysis_from_result(stock_id, analysis):
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "data_source": "TWSE",
+        "fundamental": analysis.get("fundamental"),
         "close_price": float(df["Close"].iloc[-1]) if "Close" in df.columns else None,
         "chip_score": decision.get("chip_score") if isinstance(decision, dict) else None,
         "chip_signals": decision.get("chip_signals") if isinstance(decision, dict) else None,
@@ -413,8 +418,13 @@ def _analysis_from_result(stock_id, analysis):
 def _ensure_current_analysis(stock_id):
     if _is_log_stale(stock_id):
         return _analysis_from_result(stock_id, _run_current_analysis(stock_id))
-    return _analysis_from_log(stock_id)
 
+    analysis = _analysis_from_log(stock_id)
+
+    if not analysis.get("fundamental"):
+        return _analysis_from_result(stock_id, _run_current_analysis(stock_id))
+
+    return analysis
 
 def _build_card(stock_id):
     analysis = _ensure_current_analysis(stock_id)
