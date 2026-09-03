@@ -92,7 +92,7 @@
           <div class="card-body">
             <h2>基本面</h2>
 
-            {% if a.fundamental %}
+            {% if a.fundamental and a.fundamental.roe is not none %}
             <div class="row g-3">
 
               <div class="col-md-4">
